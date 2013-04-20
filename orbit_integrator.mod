@@ -1,0 +1,169 @@
+GFORTRAN module version '4' created from nbody5_mw.f90 on Sat Apr 20 14:09:55 2013
+MD5:85c9f376c0cb34a0c20bd55ab8765907 -- If you edit this, you'll get what you deserve.
+
+(() () () () () () () () () () () () () () () () () () () () () () () ()
+() () ())
+
+()
+
+()
+
+()
+
+()
+
+()
+
+(2 '__convert_r4_r8' '(intrinsic)' '__convert_r4_r8' 1 ((PROCEDURE
+UNKNOWN-INTENT UNKNOWN-PROC UNKNOWN UNKNOWN 0 0 FUNCTION ELEMENTAL PURE)
+(REAL 8 0 0 REAL ()) 0 0 () () 2 () () () 0 0)
+3 'backward' 'orbit_integrator' 'backward' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (LOGICAL 4 0 0 LOGICAL ()) 0 0 ()
+(CONSTANT (LOGICAL 4 0 0 LOGICAL ()) 0 1) () 0 () () () 0 0)
+4 'c0' 'orbit_integrator' 'c0' 1 ((VARIABLE UNKNOWN-INTENT UNKNOWN-PROC
+UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () () 0 () () () 0 0)
+5 'cp' 'orbit_integrator' 'cp' 1 ((PARAMETER UNKNOWN-INTENT UNKNOWN-PROC
+UNKNOWN IMPLICIT-SAVE 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0 0 () (ARRAY
+(REAL 8 0 0 REAL ()) 1 (((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.96666666666668@1') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.96666666666668@1') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.96666666666668@1') ())) ('3')) (1 EXPLICIT (CONSTANT (INTEGER 4 0 0
+INTEGER ()) 0 '1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () ()
+() 0 0)
+6 'forward' 'orbit_integrator' 'forward' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (LOGICAL 4 0 0 LOGICAL ()) 0 0 ()
+(CONSTANT (LOGICAL 4 0 0 LOGICAL ()) 0 0) () 0 () () () 0 0)
+7 'gn' 'orbit_integrator' 'gn' 1 ((PARAMETER UNKNOWN-INTENT UNKNOWN-PROC
+UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () (CONSTANT (REAL 8
+0 0 REAL ()) 0 '0.11e9fb0469a313@-5') () 0 () () () 0 0)
+8 'gyr' 'orbit_integrator' 'gyr' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () (
+CONSTANT (REAL 8 0 0 REAL ()) 0 '0.6fe915466cc000@14') () 0 () () () 0 0)
+9 'kms' 'orbit_integrator' 'kms' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () (
+CONSTANT (REAL 8 0 0 REAL ()) 0 '0.186a0000000000@5') () 0 () () () 0 0)
+10 'kpc' 'orbit_integrator' 'kpc' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () (
+CONSTANT (REAL 8 0 0 REAL ()) 0 '0.a2a15d09519be0@18') () 0 () () () 0 0)
+11 'lengthscale' 'orbit_integrator' 'lengthscale' 1 ((PARAMETER
+UNKNOWN-INTENT UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL
+()) 0 0 () (CONSTANT (REAL 8 0 0 REAL ()) 0 '0.a2a15d09519be0@18') () 0
+() () () 0 0)
+12 'mass0' 'orbit_integrator' 'mass0' 1 ((VARIABLE UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () () 0
+() () () 0 0)
+13 'massp' 'orbit_integrator' 'massp' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0
+0 () (ARRAY (REAL 8 0 0 REAL ()) 1 (((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.1c8acca68c2e4b@37') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.2daae10a79e3aa@36') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.4480518fb6d580@36') ())) ('3')) (1 EXPLICIT (CONSTANT (INTEGER 4 0 0
+INTEGER ()) 0 '1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () ()
+() 0 0)
+14 'msun' 'orbit_integrator' 'msun' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () (
+CONSTANT (REAL 8 0 0 REAL ()) 0 '0.6211f8bc6de1d8@28') () 0 () () () 0 0)
+15 'numperturbers' 'orbit_integrator' 'numperturbers' 1 ((PARAMETER
+UNKNOWN-INTENT UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (INTEGER 4 0 0
+INTEGER ()) 0 0 () (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3') () 0 () ()
+() 0 0)
+16 'orbit_integrator' 'orbit_integrator' 'orbit_integrator' 1 ((MODULE
+UNKNOWN-INTENT UNKNOWN-PROC UNKNOWN UNKNOWN 0 0) (UNKNOWN 0 0 0 UNKNOWN
+()) 0 0 () () 0 () () () 0 0)
+17 'pi' 'orbit_integrator' 'pi' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () (
+CONSTANT (REAL 8 0 0 REAL ()) 0 '0.3243f6a8885a38@1') () 0 () () () 0 0)
+18 'posp' 'orbit_integrator' 'posp' 1 ((VARIABLE UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN UNKNOWN 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0 0 ()
+(2 EXPLICIT (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '1') (CONSTANT (
+INTEGER 4 0 0 INTEGER ()) 0 '3') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0
+'1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () () () 0 0)
+19 'rin' 'orbit_integrator' 'rin' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () (
+CONSTANT (REAL 8 0 0 REAL ()) 0 '0.32d26d12e980b6@19') () 0 () () () 0 0)
+20 'rout' 'orbit_integrator' 'rout' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () (
+CONSTANT (REAL 8 0 0 REAL ()) 0 '0.261dd1ce2f2088@20') () 0 () () () 0 0)
+21 'scalelength0' 'orbit_integrator' 'scalelength0' 1 ((VARIABLE
+UNKNOWN-INTENT UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL
+()) 0 0 () () 0 () () () 0 0)
+22 'scalelengthp' 'orbit_integrator' 'scalelengthp' 1 ((PARAMETER
+UNKNOWN-INTENT UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0 DIMENSION) (REAL 8
+0 0 REAL ()) 0 0 () (ARRAY (REAL 8 0 0 REAL ()) 1 (((CONSTANT (REAL 8 0
+0 REAL ()) 0 '0.6194049f30f720@18') ()) ((CONSTANT (REAL 8 0 0 REAL ())
+0 '0.6194049f30f720@18') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.6194049f30f720@18') ())) ('3')) (1 EXPLICIT (CONSTANT (INTEGER 4 0 0
+INTEGER ()) 0 '1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () ()
+() 0 0)
+23 'softening' 'orbit_integrator' 'softening' 1 ((PARAMETER
+UNKNOWN-INTENT UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL
+()) 0 0 () (CONSTANT (REAL 8 0 0 REAL ()) 0 '0.29a2241af62c00@16') () 0
+() () () 0 0)
+24 'v0200' 'orbit_integrator' 'v0200' 1 ((VARIABLE UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0) (REAL 8 0 0 REAL ()) 0 0 () () 0
+() () () 0 0)
+25 'vp200' 'orbit_integrator' 'vp200' 1 ((VARIABLE UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN UNKNOWN 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0 0 ()
+(1 EXPLICIT (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '1') (CONSTANT (
+INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () () () 0 0)
+26 'vposp' 'orbit_integrator' 'vposp' 1 ((VARIABLE UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN UNKNOWN 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0 0 ()
+(2 EXPLICIT (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '1') (CONSTANT (
+INTEGER 4 0 0 INTEGER ()) 0 '3') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0
+'1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () () () 0 0)
+27 'vxp0' 'orbit_integrator' 'vxp0' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0
+0 () (ARRAY (REAL 8 0 0 REAL ()) 1 (((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.7b98a000000000@6') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.646b0800000000@6') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.15be6800000000@7') ())) ('3')) (1 EXPLICIT (CONSTANT (INTEGER 4 0 0
+INTEGER ()) 0 '1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () ()
+() 0 0)
+28 'vyp0' 'orbit_integrator' 'vyp0' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0
+0 () (ARRAY (REAL 8 0 0 REAL ()) 1 (((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.1df20400000000@7') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.17143400000000@7') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.200b2000000000@6') ())) ('3')) (1 EXPLICIT (CONSTANT (INTEGER 4 0 0
+INTEGER ()) 0 '1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () ()
+() 0 0)
+29 'vzp0' 'orbit_integrator' 'vzp0' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0
+0 () (ARRAY (REAL 8 0 0 REAL ()) 1 (((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.13747800000000@7') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.b2872000000000@6') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.132b3a00000000@7') ())) ('3')) (1 EXPLICIT (CONSTANT (INTEGER 4 0 0
+INTEGER ()) 0 '1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () ()
+() 0 0)
+30 'xp0' 'orbit_integrator' 'xp0' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0
+0 () (ARRAY (REAL 8 0 0 REAL ()) 1 (((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.a2a15d09519be0@18') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.8e332c11968e88@19') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.951c971d131820@19') ())) ('3')) (1 EXPLICIT (CONSTANT (INTEGER 4 0 0
+INTEGER ()) 0 '1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () ()
+() 0 0)
+31 'yp0' 'orbit_integrator' 'yp0' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0
+0 () (ARRAY (REAL 8 0 0 REAL ()) 1 (((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.19b2658cec2515@20') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.162a2c0cc29289@20') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'0.1712bbc2712da3@19') ())) ('3')) (1 EXPLICIT (CONSTANT (INTEGER 4 0 0
+INTEGER ()) 0 '1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () ()
+() 0 0)
+32 'zp0' 'orbit_integrator' 'zp0' 1 ((PARAMETER UNKNOWN-INTENT
+UNKNOWN-PROC UNKNOWN IMPLICIT-SAVE 0 0 DIMENSION) (REAL 8 0 0 REAL ()) 0
+0 () (ARRAY (REAL 8 0 0 REAL ()) 1 (((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.10e93822639607@20') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.19ba8737f96929@20') ()) ((CONSTANT (REAL 8 0 0 REAL ()) 0
+'-0.3b7632c0be807c@19') ())) ('3')) (1 EXPLICIT (CONSTANT (INTEGER 4 0 0
+INTEGER ()) 0 '1') (CONSTANT (INTEGER 4 0 0 INTEGER ()) 0 '3')) 0 () ()
+() 0 0)
+)
+
+('__convert_r4_r8' 0 2 'backward' 0 3 'c0' 0 4 'cp' 0 5 'forward' 0 6 'gn'
+0 7 'gyr' 0 8 'kms' 0 9 'kpc' 0 10 'lengthscale' 0 11 'mass0' 0 12 'massp'
+0 13 'msun' 0 14 'numperturbers' 0 15 'orbit_integrator' 0 16 'pi' 0 17
+'posp' 0 18 'rin' 0 19 'rout' 0 20 'scalelength0' 0 21 'scalelengthp' 0
+22 'softening' 0 23 'v0200' 0 24 'vp200' 0 25 'vposp' 0 26 'vxp0' 0 27
+'vyp0' 0 28 'vzp0' 0 29 'xp0' 0 30 'yp0' 0 31 'zp0' 0 32)
