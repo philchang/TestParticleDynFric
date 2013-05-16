@@ -92,9 +92,8 @@ program nbody
   double precision, dimension( NUMMODES) :: amcostot, amsintot
   double precision :: a0tot
   
-  character(len=32) :: filename
+  character(len=80) :: filename
   ! initialize the file
-
   call getarg(1, filename)
   call initialize_perturber_file(filename)
   write(*,*) "Read initial data"
@@ -180,7 +179,7 @@ end program nbody
 subroutine initialize_perturber_file( filename) 
   use orbit_integrator
   implicit none
-  character(80), intent(IN) :: filename
+  character(len=80), intent(IN) :: filename
   integer :: i
   double precision :: r, v
   
