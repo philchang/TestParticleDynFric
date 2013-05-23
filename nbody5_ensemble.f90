@@ -20,6 +20,7 @@ module orbit_integrator
 
   double precision, dimension(MAX_PERTURBERS) :: xp0, yp0, zp0, vxp0, vyp0, vzp0
   double precision, dimension(MAX_PERTURBERS) :: periDistance
+  double precision, dimension(MAX_PERTURBERS) :: periTime
 
   double precision, dimension(MAX_PERTURBERS,3) :: posp_start ! starting x,y,z of perturbers
   double precision, dimension(MAX_PERTURBERS,3) :: vposp_start ! starting vx,vy,vz of perturbers
@@ -108,10 +109,10 @@ program nbody
   mass = hernquistmass( semi, mass0, v0200, c0)
   tdyn = frac*sqrt(semi**3D0/(Gn*mass))
   dtau = tdyn/steps
-  tau_end = 1D0*Gyr!ndyns*tdyn
+  tau_end = 2.0D0*Gyr!ndyns*tdyn
   
   ! get the starting conditions for the perturber
-  startingTime = 1D0*Gyr ! integrate backward by this time
+  startingTime = 2.0D0*Gyr ! integrate backward by this time
   call get_starting_conditions(-startingTime, rstartp)  ! integrate backwards 
   
   rparts(1:numPerturbers,:) = rstartp(1:numPerturbers,:) ! set the starting conditions
@@ -163,7 +164,10 @@ program nbody
      ! get the peridistance
      do i = 1, numPerturbers 
         distance = sqrt(rparts(i,1)**2. + rparts(i,5)**2) ! r^2 + z^2
-        if( distance < periDistance(i)) periDistance(i) = distance
+        if( distance < periDistance(i)) then 
+            periDistance(i) = distance
+            periTime(i)=tau
+        endif
      end do
      
      call fourierdata(tau, numparts, rparts, amcostot, amsintot, a0tot)
@@ -243,11 +247,17 @@ subroutine write_out_realization( amcostot, amsintot, a0tot)
   write(*,*) 'number of perturbers'
   write(*,fmt='(I8)') numPerturbers
 
-  write(*,*) 'mass, peri, x,y,z, vx,vy, vz'
+  write(*,*) 'mass, peridistance, periTime,x,y,z, vx,vy, vz'
   do i = 1, numPerturbers
-     write(*,fmt='(1x,8(D15.5))') massp(i)/Msun, periDistance(i)/kpc, posp(i,:)/kpc, vposp(i,:)/kms
+     write(*,fmt='(1x,9(D15.5))') massp(i)/Msun, periDistance(i)/kpc, periTime(i)/3.15D13,posp(i,:)/kpc, vposp(i,:)/kms
   end do
 
+!! Store                                                                                                          
+      open (12,file='output.dat',status='unknown')
+      do i = 1, numPerturbers
+         write (12,fmt='(1x,9(D15.5))') massp(i)/Msun, periDistance(i)/kpc, periTime(i)/3.15D13, posp(i,:)/kpc, vposp(i,:)/kms
+      end do
+      close (12)
   return
 end subroutine write_out_realization
 
