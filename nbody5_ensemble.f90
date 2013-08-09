@@ -198,6 +198,8 @@ program nbody
             periTime(i)=tau
         endif
      end do
+
+     call writedata(tau/Gyr, numPerturbers, numparts, rparts)
      
      call fourierdata(tau, numparts, rparts, amcostot, amsintot, a0tot)
   end do
@@ -1065,6 +1067,37 @@ SUBROUTINE dfour1(data,nn,isign)
 END SUBROUTINE dfour1
 
 
+subroutine writedata(tau, numPerturbers, numparts, rparts)
+  implicit none
+  integer :: numparts, i, numPerturbers
+  double precision :: tau
+  double precision, dimension(numparts,6) :: rparts, vparts
+  double precision :: x,y,r,theta, z
+  double precision :: absl, absr, v2, energy
+  double precision, dimension(numparts) :: eps, semi
+  character(LEN=40) :: filename
+  write( filename, fmt='(A16,E9.3,A8)') "particle_data_t=", tau, "Gyr.data"
+  open(unit=22, file=filename, status='new')
+
+  write(22,fmt='(F5.1)') tau
+
+  do i = numPerturbers, numparts, 1
+     r = rparts(i,1)
+     theta = rparts(i,4)
+
+     x = r*cos(theta)
+     y = r*sin(theta)
+     z = rparts(i,5)
+     write(22,fmt='(I5,6(1X,E12.4))') i, x, y, z, r, theta
+
+!  write(*,fmt='(11(2X,D12.6))') tau, rparts(1,1), rparts(1,2), rparts(2,1), rparts(2,2)
+     
+  end do
+  close(22) 
+!  write(24)tau,rparts,vparts
+
+  return 
+end subroutine writedata
 
 
 
