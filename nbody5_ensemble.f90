@@ -32,7 +32,7 @@ module orbit_integrator
   integer, parameter :: NUMMODES = 5 ! up to m=5
   double precision, parameter :: fourier_rin = 10D0*kpc, fourier_rout=25D0*kpc ! this sets the regions where we calculate fourier modes
 
-  logical, parameter :: INTEGRATE_BACKWARD_FIRST = .false.  ! set this to true if you want to integrate 
+  logical, parameter :: INTEGRATE_BACKWARD_FIRST = .true.  ! set this to true if you want to integrate 
                                                             ! from present position backwards to get initial conditions
 
 end module orbit_integrator
@@ -54,6 +54,7 @@ program nbody
   use orbit_integrator
   implicit none
 
+!!  integer, parameter :: numparts = 1000, numradial=200  
   integer, parameter :: numparts = 100000, numradial=200
   double precision, dimension (numparts,6) :: rparts
   double precision :: tau, dtau, tdyn, tau_end, t1
@@ -109,16 +110,29 @@ program nbody
   mass = hernquistmass( semi, mass0, v0200, c0)
   tdyn = frac*sqrt(semi**3D0/(Gn*mass))
   dtau = tdyn/steps
-  tau_end = 2.0D0*Gyr!ndyns*tdyn
+  tau_end = 1.0D0*Gyr!ndyns*tdyn
   
   ! get the starting conditions for the perturber
-  startingTime = 2.0D0*Gyr ! integrate backward by this time
+  startingTime = 1.0D0*Gyr ! integrate backward by this time
   call get_starting_conditions(-startingTime, rstartp)  ! integrate backwards 
   
   rparts(1:numPerturbers,:) = rstartp(1:numPerturbers,:) ! set the starting conditions
 
   call update_perturber_positions(numparts, rparts)
-     
+  
+  do i = 1, numPerturbers
+      write(*,fmt='(1x,6(D15.5))') posp(i,1)/kpc, posp(i,2)/kpc, posp(i,3)/kpc, vposp(i,1)/kms, vposp(i,2)/kms, vposp(i,3)/kms
+  end do
+
+  !! Store                                                                                                                                                  
+      open (12,file='outputBack.dat',status='unknown')
+      do i = 1, numPerturbers
+         write (12,fmt='(1x,9(D15.5))') massp(i)/Msun,periTime(i)/3.15D13, periDistance(i)/kpc, posp(i,:)/kpc, vposp(i,:)/kms
+      end do
+      close (12)
+
+  !!pause ' '
+   
   ! set the starting condition for later
   posp_start = posp/kpc
   vposp_start = vposp/kms
@@ -151,16 +165,31 @@ program nbody
         end if
      end do
   end do
-  
+
+! writing current time in Myr and X,Y,Z of satellites: 
+  open (21,file='XYZ.dat',status='unknown')
+! write out the R values as a function of time  
+  open (22,file='Rs.dat',status='unknown')
+
   do tau = 0D0, tau_end, tdyn
-     
-     write(*,fmt='(A40,F9.2)') "Current run time [Myrs] = ", tau/3.15D13
+
+     write(*,fmt='(A40,F9.2)') "Current run time [Myrs]=", tau/3.15D13       
+
+     do i = 1, numPerturbers
+     write(21,*) tau/3.15D13, posp(i,:)/kpc
+     enddo    
+
+     open (22,file='Rs.dat',status='unknown')
+     do i = 1, numPerturbers
+       write(22,fmt='(A40,F9.2)') "R_satellite [kpc] =", rparts(i,1)/kpc
+     enddo
+
      stau = tau
      do stp = 1, steps
         call integrate_orbit(stau, dtau, numparts, rparts)
         stau = stau + dtau
      enddo
-     
+
      ! get the peridistance
      do i = 1, numPerturbers 
         distance = sqrt(rparts(i,1)**2. + rparts(i,5)**2) ! r^2 + z^2
@@ -172,7 +201,10 @@ program nbody
      
      call fourierdata(tau, numparts, rparts, amcostot, amsintot, a0tot)
   end do
-  
+ 
+  close(21)   ! the XYZ file
+  close(22)   ! the Rs file
+   
   call write_out_realization( amcostot, amsintot, a0tot)
 
 !     write(*,fmt='(9(2X,D12.6))') t/tdyn, l(1), l(2), l(3), (energy-energy0)/energy0, acos(dot_product(l, n1))/pi*180D0, acos(dot_product(l, nCW))/pi*180D0, eccent, massenc
@@ -190,6 +222,7 @@ subroutine initialize_perturber_file( filename)
   open(unit = 37, file = filename, status = 'old')
 
   read(unit=37,fmt='(1X,I8)') numPerturbers
+  write(*,*),'numPerturbers=',numPerturbers
 
   if( numPerturbers > MAX_PERTURBERS) then
      write(*,*) "ERROR: Increase MAX_PERTURBERS"
@@ -205,9 +238,10 @@ subroutine initialize_perturber_file( filename)
   vzp0 = 0D0
 
   do i = 1, numPerturbers
-     read(unit=37,fmt='(1x,20(D15.5))') massp(i), r, v, xp0(i), yp0(i), zp0(i), vxp0(i), vyp0(i), vzp0(i)
+     read(unit=37,fmt='(1x,20(E15.5))') massp(i), r, v, xp0(i), yp0(i), zp0(i), vxp0(i), vyp0(i), vzp0(i)  
      cp(i) = 9.4D0  ! THESE TWO SHOULD BE READ IN
      scalelengthp(i) = 0.6D0*kpc
+     write (*,*),'mass,vzsat=',massp(i),vzp0(i)
   end do
 
   massp = massp*Msun
@@ -218,15 +252,13 @@ subroutine initialize_perturber_file( filename)
   vxp0 = vxp0*kms
   vyp0 = vyp0*kms
   vzp0 = vzp0*kms
-
+  
   return
 end subroutine initialize_perturber_file
 
 subroutine close_perturber_file
   implicit none
-  
   close( unit = 37)
-  
   return
 end subroutine close_perturber_file
 
@@ -239,10 +271,13 @@ subroutine write_out_realization( amcostot, amsintot, a0tot)
   double precision :: a0tot
 
   integer :: i 
-  ! write out the fourier reponse and pericenter distance
-  write(*,*) 'm 1-5 amplitudes and phase'
-  write(*, fmt='(10(2X,E9.2))') sqrt(amcostot*amcostot + &
+  ! write out the fourier response and pericenter distance
+  ! m = 1-5 amplitudes and phase
+
+  open (13,file='fourierm1m5.dat',status='unknown')
+  write(13, fmt='(10(2X,E9.2))') sqrt(amcostot*amcostot + &
        amsintot*amsintot)/a0tot, atan(amsintot/amcostot)
+  close(13)
 
   write(*,*) 'number of perturbers'
   write(*,fmt='(I8)') numPerturbers
@@ -255,7 +290,7 @@ subroutine write_out_realization( amcostot, amsintot, a0tot)
 !! Store                                                                                                          
       open (12,file='output.dat',status='unknown')
       do i = 1, numPerturbers
-         write (12,fmt='(1x,9(D15.5))') massp(i)/Msun, periDistance(i)/kpc, periTime(i)/3.15D13, posp(i,:)/kpc, vposp(i,:)/kms
+         write (12,fmt='(1x,9(D15.5))') massp(i)/Msun, periTime(i)/3.15D13, periDistance(i)/kpc, posp(i,:)/kpc, vposp(i,:)/kms
       end do
       close (12)
   return
@@ -288,7 +323,7 @@ subroutine get_starting_conditions(startingTime, rstartp)
   mass = hernquistmass(absr, mass0, v0200, c0)
   tdyn = sqrt(absr*absr*absr/(Gn*mass))
   tdyn = 1D5*3.15e7   
-
+  
   if( INTEGRATE_BACKWARD_FIRST) then
      tau = -tdyn ! run movie backwards in time
   
@@ -434,7 +469,7 @@ subroutine integrate_orbit(stau, tau, numparts, rparts)
 
   call integrate_io_rk(0, numparts,tau,fine,rparts,rpartsout) ! full
   rparts = rpartsout
-
+  
   return
 
 end subroutine integrate_orbit
