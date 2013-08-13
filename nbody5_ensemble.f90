@@ -62,7 +62,7 @@ program nbody
   double precision :: t, e, semi
   real :: harvest
   integer :: i, ndyns, k,j, stp
-  integer :: steps = 5
+  integer :: steps = 10
   double precision :: v0, v1
   double precision :: absdeltar, absr, dadr, dadphi, absrg
   double precision, dimension(3) :: acc, deltar, acc0, dv
