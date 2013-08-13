@@ -170,6 +170,7 @@ program nbody
 ! write out the R values as a function of time  
   open (22,file='Rs.dat',status='unknown')
   dtau = tdyn
+  tau = 0d0
   do while (tau < tau_end) 
 !  do tau = 0D0, tau_end, tdyn
 
