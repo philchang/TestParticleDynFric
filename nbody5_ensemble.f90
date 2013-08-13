@@ -57,7 +57,7 @@ program nbody
 !!  integer, parameter :: numparts = 1000, numradial=200  
   integer, parameter :: numparts = 100000, numradial=200
   double precision, dimension (numparts,6) :: rparts
-  double precision :: tau, dtau, tdyn, tau_end, t1
+  double precision :: tau, dtau, dstau, tdyn, tau_end, t1
   double precision, dimension(3) :: r, v, zvec, xvec, yvec, rpvec, rg, sinv, rh
   double precision :: t, e, semi
   real :: harvest
@@ -109,7 +109,6 @@ program nbody
   !  mass = nfwmass(scalelength0, mass0, semi)
   mass = hernquistmass( semi, mass0, v0200, c0)
   tdyn = frac*sqrt(semi**3D0/(Gn*mass))
-  dtau = tdyn/steps
   tau_end = 1.0D0*Gyr!ndyns*tdyn
   
   ! get the starting conditions for the perturber
@@ -170,8 +169,9 @@ program nbody
   open (21,file='XYZ.dat',status='unknown')
 ! write out the R values as a function of time  
   open (22,file='Rs.dat',status='unknown')
-
-  do tau = 0D0, tau_end, tdyn
+  dtau = tdyn
+  do while (tau < tau_end) 
+!  do tau = 0D0, tau_end, tdyn
 
      write(*,fmt='(A40,F9.2)') "Current run time [Myrs]=", tau/3.15D13       
 
@@ -185,10 +185,16 @@ program nbody
      enddo
 
      stau = tau
+     dstau = dtau/steps
      do stp = 1, steps
-        call integrate_orbit(stau, dtau, numparts, rparts)
-        stau = stau + dtau
+        call integrate_orbit(stau, dstau, numparts, rparts)
+        stau = stau + dstau
      enddo
+
+     ! update time and timestep
+     tau = tau + dtau
+     
+     if( tau+dtau > tau_end) dtau = tau_end-tau ! integrate exactly to the end
 
      ! get the peridistance
      do i = 1, numPerturbers 
