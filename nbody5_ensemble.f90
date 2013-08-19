@@ -4,9 +4,12 @@ module orbit_integrator
   double precision, parameter :: Msun=1.9891D33, Gn=6.67348D-8
   double precision, parameter :: lengthscale = 3D21, softening = 1D-3*lengthscale
   double precision, parameter :: kpc = 3D21, kms=1D5, Gyr = 1D9*3.15D7
-  double precision :: mass0 = 1D12*Msun, &
+
+  double precision :: mass0 = 1.03D12*Msun, &
        scalelength0 = 20D0*kpc, &
-       v0200 = 1.6D7, c0 = 9.4
+       v0200 = 2.2D7, c0 = 12.,  & 
+       ! NFW parameters (K13 values)
+       Rvir = 299D0*kpc, cvir = 9.56, Mvir = 1.5d12*Msun, anfw
 
   double precision, parameter :: pi = 0.5D0*6.28318530717959d0
   double precision, parameter :: rin = 5D0*kpc, rout = 60D0*kpc
@@ -55,7 +58,7 @@ program nbody
   implicit none
 
 !!  integer, parameter :: numparts = 1000, numradial=200  
-  integer, parameter :: numparts = 100000, numradial=200
+  integer, parameter :: numparts = 1000, numradial=200
   double precision, dimension (numparts,6) :: rparts
   double precision :: tau, dtau, dstau, tdyn, tau_end, t1
   double precision, dimension(3) :: r, v, zvec, xvec, yvec, rpvec, rg, sinv, rh
@@ -67,7 +70,7 @@ program nbody
   double precision :: absdeltar, absr, dadr, dadphi, absrg
   double precision, dimension(3) :: acc, deltar, acc0, dv
   double precision, parameter :: frac = 0.2D0
-  double precision :: mass, nfwmass, hernquistmass,rhohernquist,rhoh
+  double precision :: mass, nfwmass, hernquistmass,rhoNFW,rhoh
   double precision :: dvr, dvphi, dvx
   double precision, parameter :: dvr0 = 4.858D6, dvphi0 = -2.899D6 
   external :: integrate_orbit, nfwmass, hernquistmass, & 
@@ -106,13 +109,22 @@ program nbody
   
   ndyns = 40D0/frac
   semi = 10D0*lengthscale! + lengthscale*floor(1D0*numradial*i/numparts)/numradial
-  !  mass = nfwmass(scalelength0, mass0, semi)
-  mass = hernquistmass( semi, mass0, v0200, c0)
+  ! semi is used below to determine the dynamical time for integration purposes so changing it changes the timestep
+  ! this should be changed to adaptive time step in the future.
+
+   anfw = Rvir/cvir
+   mass = nfwmass(anfw, mass0, semi)
+
+!   mass = hernquistmass(semi, mass0, v0200, c0)
+!  mass = hernquistmass(300D0*lengthscale, 1.75d12*Msun, v0200, c0)
+!  mass = nfwmass(anfw,mass0,299.*kpc)
+!  write (*,*) 'semi,mass0,v0200,c0,mass=',semi/3D21,mass0/1.9891D33,v0200,c0,(mass/1.9891D33)/1.d12
+
   tdyn = frac*sqrt(semi**3D0/(Gn*mass))
-  tau_end = 1.0D0*Gyr!ndyns*tdyn
+  tau_end = 10.0D0*Gyr!ndyns*tdyn
   
   ! get the starting conditions for the perturber
-  startingTime = 1.0D0*Gyr ! integrate backward by this time
+  startingTime = 10.0D0*Gyr ! integrate backward by this time
   call get_starting_conditions(-startingTime, rstartp)  ! integrate backwards 
   
   rparts(1:numPerturbers,:) = rstartp(1:numPerturbers,:) ! set the starting conditions
@@ -139,7 +151,7 @@ program nbody
   ! set uo disk particles
   do k = 1, numradial
      semi = rin + (rout-rin)*(k-1)/numradial
-     mass = hernquistmass( semi, mass0, v0200, c0)
+     mass =  nfwmass(anfw, mass0, semi)
      
      v0 = sqrt(Gn*mass/(semi)) 
      
@@ -166,24 +178,16 @@ program nbody
   end do
 
 ! writing current time in Myr and X,Y,Z of satellites: 
-  open (21,file='XYZ.dat',status='unknown')
-! write out the R values as a function of time  
-  open (22,file='Rs.dat',status='unknown')
+  open (21,file='XYZSat1.dat',status='unknown')
+  open (22,file='XYZSat2.dat',status='unknown')
+!  open (23,file='XYZSat3.dat',status='unknown')
+
   dtau = tdyn
   tau = 0d0
   do while (tau < tau_end) 
 !  do tau = 0D0, tau_end, tdyn
 
      write(*,fmt='(A40,F9.2)') "Current run time [Myrs]=", tau/3.15D13       
-
-     do i = 1, numPerturbers
-     write(21,*) tau/3.15D13, posp(i,:)/kpc
-     enddo    
-
-     open (22,file='Rs.dat',status='unknown')
-     do i = 1, numPerturbers
-       write(22,fmt='(A40,F9.2)') "R_satellite [kpc] =", rparts(i,1)/kpc
-     enddo
 
      stau = tau
      dstau = dtau/steps
@@ -206,14 +210,19 @@ program nbody
         endif
      end do
 
-     call writedata(tau/Gyr, numPerturbers, numparts, rparts)
+      write(21,*) tau/3.15D13, posp(1,:)/kpc
+      write(22,*) tau/3.15D13, posp(2,:)/kpc
+!      write(23,*) tau/3.15D13, posp(3,:)/kpc
+
+     !call writedata(tau/Gyr, numPerturbers, numparts, rparts)
      
      call fourierdata(tau, numparts, rparts, amcostot, amsintot, a0tot)
   end do
  
-  close(21)   ! the XYZ file
-  close(22)   ! the Rs file
-   
+  close(21)   ! the XYZ files
+  close(22)
+!  close(23)
+
   call write_out_realization( amcostot, amsintot, a0tot)
 
 !     write(*,fmt='(9(2X,D12.6))') t/tdyn, l(1), l(2), l(3), (energy-energy0)/energy0, acos(dot_product(l, n1))/pi*180D0, acos(dot_product(l, nCW))/pi*180D0, eccent, massenc
@@ -314,8 +323,8 @@ subroutine get_starting_conditions(startingTime, rstartp)
   double precision, dimension(numPerturbers,6) :: rpertu, rpertuout
   double precision, dimension(numPerturbers) :: theta
   double precision :: tau, absr, mass, tdyn, t
-  double precision :: hernquistmass, dot_product
-  external :: hernquistmass, dot_product, integrate_io_rk
+  double precision :: hernquistmass, dot_product,nfwmass
+  external :: hernquistmass, dot_product, integrate_io_rk,nfwmass
   integer :: i
 
   integer, parameter :: fine = 2
@@ -329,7 +338,7 @@ subroutine get_starting_conditions(startingTime, rstartp)
   rpertu(:,6) = vzp0(1:numPerturbers)
 
   absr = sqrt(rpertu(1,1)**2D0 + rpertu(1,5)**2D0)
-  mass = hernquistmass(absr, mass0, v0200, c0)
+  mass =  nfwmass(anfw, mass0, absr)
   tdyn = sqrt(absr*absr*absr/(Gn*mass))
   tdyn = 1D5*3.15e7   
   
@@ -619,22 +628,32 @@ double precision function dot_product( a, b) result(ans)
 
 end function dot_product
 
-double precision function nfwmass( scalelength, mass, r) result(m) 
+double precision function nfwmass(scalelength, mass, r) result(m) 
   implicit none
   
   double precision :: scalelength, mass, r
-  double precision :: x, rho0
+  double precision :: x
 
   x = r/scalelength
-
-  if( x < 1D0) then
-     m = mass*x*x
-  else
-     m = mass
-  end if
+  m = mass*(log(1+x) - (x/(1.+x)))
 
   return
 end function nfwmass
+
+double precision function rhoNFW (scalelength,Mvir,Rvir,cvir,r) result(rho)
+
+  implicit none
+  
+  double precision, parameter :: pi = 0.5D0*6.28318530717959d0
+  double precision :: scalelength,Mvir,Rvir,cvir,r,x,fcvir,rhos
+
+  fcvir = log(1.+cvir)-(cvir/(1.+cvir))
+  rhos = Mvir/(4*pi*(scalelength**3)*fcvir)
+  x = r/scalelength
+  rho = rhos/(x*((1.+x)**2))
+
+  return
+end function rhoNFW
 
 subroutine derivs( noeqs, x, y, dydx)
   use orbit_integrator
@@ -646,10 +665,10 @@ subroutine derivs( noeqs, x, y, dydx)
   double precision, intent(IN), dimension(noeqs) :: y
   double precision, intent(OUT), dimension(noeqs) :: dydx
   double precision :: absr, absdeltar, mass
-  double precision :: nfwmass, hernquistmass, dot_product,rhoh,rhohernquist,sigmahernquist
+  double precision :: nfwmass, hernquistmass, dot_product,rhoh,rhoNFW,sigmaNFW
   integer :: gc
   integer :: k
-  external :: nfwmass, hernquistmass, dot_product,rhohernquist
+  external :: nfwmass, hernquistmass, dot_product,rhoNFW
   
   double precision :: r, vr, angmom, theta, rp, thetap,vtheta
   double precision, dimension(3) :: pos, deltax, acc, vpos, accdf ! dynamical friction term: Fdf/msat
@@ -697,7 +716,7 @@ subroutine derivs( noeqs, x, y, dydx)
 
   absr = sqrt(dot_product(pos,pos))
            
-  mass = hernquistmass( absr, mass0, v0200, c0)
+  mass =  nfwmass(anfw, mass0, absr)
 
   accdf = 0.d0 
 
@@ -705,13 +724,11 @@ subroutine derivs( noeqs, x, y, dydx)
 
      msat = massp(gc)  ! assign mass to perturber
 
-!     sigma=58D0*kms  ! median 1-d velocity dispersion for Vmax=215 km/s halo in fdf.pro, following Zentner & Bullock 03. 
-
-     sigma = sigmahernquist(absr, mass0, v0200, c0)
+     sigma = sigmaNFW(absr, mass0, Rvir, cvir)
      xchandra = vscalar/(sqrt(2.D0)*sigma)
      erf = errfunction(xchandra)
 
-     rhoh = rhohernquist(absr, mass0, v0200, c0)
+     rhoh = rhoNFW(anfw,Mvir,Rvir,cvir,absr)
      Lambda = absr/(3.*1.6*kpc)    ! following Besla et al. 2007 here.  TODO: vary bmin as function of perturber mass.
      
      accdf = -4*pi*Gn**2*(log(Lambda))*rhoh*(1./vscalar**3)*vpos*&
@@ -958,24 +975,23 @@ subroutine erfderivs( noeqs, x, y, dydx)
   return
 end subroutine erfderivs
 
-double precision function sigmahernquist(r,m0,vc200,conc) result (sigma)
+double precision function sigmaNFW(r,m0,Rvir,cvir) result (sigma)
 
    implicit none
-   double precision, intent (IN) :: r,m0,vc200,conc
+   double precision, intent (IN) :: r,m0,Rvir,cvir
    double precision, parameter :: Gn=6.7D-8
-   double precision :: r200, a, rs,mass, Vmax, x
+   double precision :: rs,Vmax, x
    double precision, parameter :: pi = 0.5D0*6.28318530717959d0
    double precision, parameter :: kpc = 3D21, kms=1D5
 
-   Vmax = 215.D0*kms  ! for V200 = 160
-   r200 = Gn*m0/(vc200*vc200)
-   rs = r200/conc
+   Vmax = 179.D0*kms  ! for Mvir = 1.5d12, cvir = 9.56, NFW halo
+   rs = cvir/Rvir
    x = r/rs  ! Zentner & Bullock 2003, equation 6
    sigma = Vmax*((1.439*(x**0.354))/(1.+1.1756*(x**0.725)))
 
 return
 
-end function sigmahernquist
+end function sigmaNFW
 
 double precision function rhohernquist(r,m0,vc200,conc) result (rho)
 
@@ -1006,14 +1022,13 @@ double precision function hernquistmass( r, m0, vc200, conc) result (mass)
   rs = r200/conc
   a = rs*sqrt(2D0*(log(1D0+conc) - conc/(1D0+conc)))
 
-!  if(m0 < 2D43) then
   mass = m0 * r*r/(r+a)**2D0
-!  else
-!  mass = m0 * r*r*r/(r+a)**3D0
-!  mass = m0 * r*r*r/(3D23)**3D0
-!endif
-!  write (*,*) r200/3D21, rs/3D21, a/3D21, m0
- ! pause
+
+!  write (*,*) 'R200, Rs, a, m0, mass='
+!  write (*,*) r200/3D21, rs/3D21, a/3D21, m0/1.9891D33, mass/1.9891D33
+!  write (*,*) 'r='
+!  write (*,*) r/3D21
+  
   return
 end function hernquistmass
 
