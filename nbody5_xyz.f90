@@ -103,7 +103,7 @@ program nbody
   call getprofile(semi, mass, rho, sigma)
 
   tdyn = frac*sqrt(semi**3D0/(Gn*mass))
-  tau_end = 10.0D0*Gyr!ndyns*tdyn
+  tau_end = 20.0D0*Gyr!ndyns*tdyn
 
   
   ! get the starting conditions for the perturber
@@ -572,14 +572,15 @@ subroutine integrate_io_rk(gc, numparts,tau,fine,rparts,rpartsout)
   !if(abs(tau) < 1D-20) return
 
  
-  dtmin = tau/fine
-  dt = dtmin
+  dtmin = 1D-4*tau/fine
+  dt = tau/fine
   t = 0.
 
   rpartsout = rparts
         
-  do m = 1, fine 
-
+!  do m = 1, fine 
+  do while(abs(t) < abs(tau))
+     minstep = tau
      do i = 1, numparts
  
         yin(1:6) = rpartsout(i,1:6)
@@ -593,18 +594,21 @@ subroutine integrate_io_rk(gc, numparts,tau,fine,rparts,rpartsout)
         rpartsout(i,1:6) = yout(1:6)
 
         ! set the next minstep
-!        teststep = 0.01D0*abs(min_step(noeqs, height))
-!        if( teststep < minstep) minstep = teststep
-     
+        teststep = 0.01D0*abs(min_step(noeqs, height))
+	teststep = sign(teststep,tau)
+        if( abs(teststep)< abs(minstep)) then
+	    minstep = teststep
+!	    write(*,*) minstep, height
+        end if
      end do
      
-!     t = t + dt
+     t = t + dt
 
-!     if( minstep < dtmin) minstep = dtmin
-!     if( minstep + t >= tau) minstep = tau-t
-     
-!     dt = minstep
-!     dt = dtmin
+     if( abs(minstep) < abs(dtmin)) minstep = dtmin
+     if( abs(minstep + t) >= abs(tau)) minstep = tau-t
+     dt = minstep
+     !dt = tau/fine
+     !dt = dtmin
   end do
 
   ! update perturber positions
@@ -794,7 +798,7 @@ subroutine derivs( noeqs, x, y, dydx)
   double complex :: amr, amphi
   double complex, parameter :: Iimag = (0D0,1D0)
   external :: potential_m
-  double precision :: accr, accphi
+  double precision :: accr, accphi, saccg, saccdf
   double precision :: z, vz, zp
   double precision :: errorfunction,term1
   double precision :: erf,xchandra,msat,Lambda,vscalar, sigma !sigma is 1-d velocity dispersion of halo
@@ -840,6 +844,12 @@ subroutine derivs( noeqs, x, y, dydx)
   end if  ! ends dynamical friction consideration - add on below if needed.
 
   if (gc.le.numPerturbers) then
+     saccg = Gn*mass/(absr*absr) 
+     saccdf = sqrt(dot_product(accdf, accdf))
+
+     ! limit the dynamical friction to be < gravity
+     if(abs(saccdf) > abs(saccg)) accdf = abs(saccg/saccdf)*accdf
+
      acc = -(Gn*mass)*pos/(absr*absr*absr) + accdf
   else 
      acc = -(Gn*mass)*pos/(absr*absr*absr)  ! no dynamical friction from the perturber itself
