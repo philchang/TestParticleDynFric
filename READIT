@@ -1,0 +1,12 @@
+-- has three different profiles: NFW, SIS, Hernquist with same DM mass w.in R200 as NFW and same inner slot (see Springel et al 2005).  Specified by PROFILE_TYPE
+-- has correct specification of Vmax and sigma for NFW profile from Zentner & Bullock 2003
+-- has correct spec for vp200 for different profiles
+-- concentration of satellites now a function of mass (Maccio et al. 2008)
+-- in subroutine derivs: logLambda=max(0.D0,log(Lambda))  ! to avoid problem in accdf when r < Rsat 
+-- checked masses agree with masses in Gadget.
+-- if using more than 3 satellites, steps needs to be more than 100.
+
+Checks:
+1) This code to the best of my knowledge reproduces the correct satellite positions 
+2) Recovers results in Besla et al. 2007, K13, Sohn et al. 2013. 
+
