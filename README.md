@@ -1,4 +1,5 @@
-TestParticleDynFric
-===================
+June 15, 2017
 
-Includes Chandrasekhar Dynamical Friction term in Phil's test particle code. Recovers LMC position -1 Gyr as per Besla et al. 2007
+Version uploaded today recovers test cases in 
+Chang & Chakrabarti (2017) and is the version 
+used in Lipnicky, Chakrabarti & Chang, to be submitted.
