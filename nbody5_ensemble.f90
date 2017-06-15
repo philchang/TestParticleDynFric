@@ -6,9 +6,9 @@ module orbit_integrator
   double precision, parameter :: kpc = 3D21, kms=1D5, Gyr = 1D9*3.15D7
 
 ! mass0=1.03D12*Msun
-  double precision :: mass0 = 1.03d12*Msun, &  ! this is M200 of Springel & White 1999
+  double precision :: mass0 = 1.29d12*Msun, &  ! this is M200 of Springel & White 1999, or M_HALO in structure.c
        scalelength0 = 20D0*kpc, &
-       v0200 = 2.2D7, c0 = 12.,  &  ! for hernquist 
+       v0200 = 1.8D7, c0 = 9.39,  &  ! for hernquist 
        ! NFW parameters (K13 values)
 !        Rvir = 329D0*kpc, cvir = 9.36, Mvir = 2.d12*Msun, anfw
        Rvir = 299D0*kpc, cvir = 9.56, Mvir = 1.5d12*Msun, anfw, &
@@ -19,6 +19,7 @@ module orbit_integrator
   double precision, parameter :: rin = 5D0*kpc, rout = 60D0*kpc
 
   integer :: numPerturbers
+  integer :: iter = 100
   integer, parameter :: MAX_PERTURBERS = 200
   double precision, dimension(MAX_PERTURBERS) :: massp
   double precision, dimension(MAX_PERTURBERS) :: scalelengthp
@@ -36,17 +37,17 @@ module orbit_integrator
   double precision, dimension(MAX_PERTURBERS,3) :: vposp ! vx,vy,vz of perturbers
 
   ! FOURIER MODES  
-  integer, parameter :: NUMMODES = 5 ! up to m=5
-  double precision, parameter :: fourier_rin = 10D0*kpc, fourier_rout=25D0*kpc ! this sets the regions where we calculate fourier modes
+  integer, parameter :: NUMMODES = 4 ! up to m=5
+  double precision, parameter :: fourier_rin = 10D0*kpc, fourier_rout=45D0*kpc ! this sets the regions where we calculate fourier modes
 
-  logical, parameter :: INTEGRATE_BACKWARD_FIRST = .true.  ! set this to true if you want to integrate 
+  logical, parameter :: INTEGRATE_BACKWARD_FIRST = .false.  ! set this to true if you want to integrate 
                                                             ! from present position backwards to get initial conditions
 
 end module orbit_integrator
 
 module rings
-  integer, parameter :: num_m = 64, num_radial = 200
-  double precision, dimension(3) :: rp_rings
+  integer, parameter :: numradial=500 ! for the particle positions
+  integer, parameter :: numradials=numradial ! for the fourier rings
 end module rings
 
 module errorFunctionStuff
@@ -61,15 +62,15 @@ program nbody
   use orbit_integrator
   implicit none
 
-!!  integer, parameter :: numparts = 1000, numradial=200  
-  integer, parameter :: numparts = 1000, numradial=200
+  !integer, parameter :: numparts = 1000!, numradial=200  
+  integer, parameter :: numparts = 100000
   double precision, dimension (numparts,6) :: rparts
   double precision :: tau, dtau, dstau, tdyn, tau_end, t1
   double precision, dimension(3) :: r, v, zvec, xvec, yvec, rpvec, rg, sinv, rh
   double precision :: t, e, semi
   real :: harvest
   integer :: i, ndyns, k,j, stp
-  integer :: steps = 100
+  integer :: steps = 50
   double precision :: v0, v1
   double precision :: absdeltar, absr, dadr, dadphi, absrg
   double precision, dimension(3) :: acc, deltar, acc0, dv
@@ -97,10 +98,10 @@ program nbody
   double precision :: distance
   integer :: numRealizations, iRealization
 
-  double precision, dimension( NUMMODES) :: amcostot, amsintot
-  double precision :: a0tot
+  double precision, dimension( NUMMODES) :: amtot
+  double precision :: a0tot, ateff
   
-  character(len=80) :: filename
+  character(len=80) :: filename, realization_filename
   ! initialize the file
   call getarg(1, filename)
   call initialize_perturber_file(filename)
@@ -126,18 +127,20 @@ endif
   ! this should be changed to adaptive time step in the future.
 
    call getprofile(semi, mass, rho, sigma)
-!   call getprofile(258.*kpc,mass,rho,sigma)
+!   call getprofile(180.*kpc,mass,rho,sigma)
 
 !   mass = hernquistmass(semi, mass0, v0200, c0)
 !  mass = hernquistmass(300D0*lengthscale, 1.75d12*Msun, v0200, c0)
 !  mass = nfwmass(anfw,mass0,299.*kpc)
 !  write (*,*) 'mass0,v0200,c0,mass=',mass0/1.9891D33,v0200,c0,(mass/1.9891D33)/1.d12
+!   write (*,*) 'mass out to 180 kpc=',(mass/1.989d33)/1.d12
+!   pause
 
   tdyn = frac*sqrt(semi**3D0/(Gn*mass))
-  tau_end = 10.0D0*Gyr!ndyns*tdyn
+  tau_end = 2.65D0*Gyr!ndyns*tdyn
   
   ! get the starting conditions for the perturber
-  startingTime = 10.0D0*Gyr ! integrate backward by this time
+  startingTime = 2.65D0*Gyr ! integrate backward by this time
   call get_starting_conditions(-startingTime, rstartp)  ! integrate backwards 
   
   rparts(1:numPerturbers,:) = rstartp(1:numPerturbers,:) ! set the starting conditions
@@ -147,6 +150,8 @@ endif
   do i = 1, numPerturbers
       write(*,fmt='(1x,6(D15.5))') posp(i,1)/kpc, posp(i,2)/kpc, posp(i,3)/kpc, vposp(i,1)/kms, vposp(i,2)/kms, vposp(i,3)/kms
   end do
+
+  open (78,file='tau_vs_ateff.dat',status='unknown')
 
   !! Store                                                                                                                                                  
       open (12,file='outputBack.dat',status='unknown')
@@ -193,8 +198,8 @@ endif
 
 ! writing current time in Myr and X,Y,Z of satellites: 
   open (21,file='XYZSat1.dat',status='unknown')
-  open (22,file='XYZSat2.dat',status='unknown')
-  open (23,file='XYZSat3.dat',status='unknown')
+!  open (22,file='XYZSat2.dat',status='unknown')
+!  open (23,file='XYZSat3.dat',status='unknown')
 
   dtau = tdyn
   tau = 0d0
@@ -224,21 +229,28 @@ endif
         endif
      end do
 
-      write(21,*) tau/3.15D13, posp(1,:)/kpc
-      write(22,*) tau/3.15D13, posp(2,:)/kpc
-      write(23,*) tau/3.15D13, posp(3,:)/kpc
+     write(21,*) tau/3.15D13, posp(1,:)/kpc, vposp(1,:)/kms
+!     write(22,*) tau/3.15D13, posp(2,:)/kpc, vposp(2,:)/kms
+!     write(23,*) tau/3.15D13, posp(3,:)/kpc, vposp(3,:)/kms
 
-     !call writedata(tau/Gyr, numPerturbers, numparts, rparts)
+     call writedata(tau/Gyr, numPerturbers, numparts, rparts,iter)
      
-     call fourierdata(tau, numparts, rparts, amcostot, amsintot, a0tot)
+     call fourierdata(tau/Gyr, numparts, rparts, amtot, a0tot, ateff,iter)
+     iter = iter +1
+!     write( realization_filename, fmt='(A14,E9.3,A8)') "fourierm1m5_t=", tau/Gyr, "Gyr.data"
+     write(78,fmt="(15(2X,E10.3))") tau/Gyr, ateff, sqrt(rparts(1:numPerturbers,1)**2. + rparts(1:numPerturbers,5)**2)/kpc
+!, & 
+!          sqrt(rparts(2,1)**2. + rparts(2,5)**2)/kpc, periDistance(2)/kpc, sqrt(rparts(3,1)**2. + rparts(3,5)**2)/kpc, periDistance(3)/kpc
+     !call write_out_realization( realization_filename, amtot, a0tot)
   end do
  
   close(21)   ! the XYZ files
-  close(22)
+!  close(22)
 !  close(23)
 
-  call write_out_realization( amcostot, amsintot, a0tot)
+  call write_out_realization( "fourierm1m5.dat", amtot, a0tot)
 
+  close(78)
 !     write(*,fmt='(9(2X,D12.6))') t/tdyn, l(1), l(2), l(3), (energy-energy0)/energy0, acos(dot_product(l, n1))/pi*180D0, acos(dot_product(l, nCW))/pi*180D0, eccent, massenc
   stop
 
@@ -295,20 +307,19 @@ subroutine close_perturber_file
 end subroutine close_perturber_file
 
 
-subroutine write_out_realization( amcostot, amsintot, a0tot)
+subroutine write_out_realization( filename, amtot, a0tot)
   use orbit_integrator
   implicit none
   
-  double precision, dimension( NUMMODES) :: amcostot, amsintot
+  double precision, dimension( NUMMODES) :: amtot
   double precision :: a0tot
-
+  character(LEN=40) :: filename
   integer :: i 
   ! write out the fourier response and pericenter distance
   ! m = 1-5 amplitudes and phase
 
-  open (13,file='fourierm1m5.dat',status='unknown')
-  write(13, fmt='(10(2X,E9.2))') sqrt(amcostot*amcostot + &
-       amsintot*amsintot)/a0tot, atan(amsintot/amcostot)
+  open (13,file=filename,status='unknown')
+  write(13, fmt='(10(2X,E9.2))') amtot/a0tot!, atan(amsintot/amcostot)
   close(13)
 
   write(*,*) 'number of perturbers'
@@ -374,15 +385,17 @@ subroutine get_starting_conditions(startingTime, rstartp)
 end subroutine get_starting_conditions
 
 
-subroutine fourierdata(tau, numparts, rparts, amcostot, amsintot, a0tot)
+subroutine fourierdata(tau, numparts, rparts, amtot, a0tot, ateff, num)
   use rings
   use orbit_integrator
 
   implicit none
-  integer :: numparts, i, k, tindex, rindex, m
+  integer :: numparts, i, k, tindex, rindex, m, num
   double precision :: tau, dphi, a0, norma0
   double precision, dimension(NUMMODES) :: amcos, amsin
   double precision, dimension(NUMMODES) :: amcostot, amsintot
+  double precision, dimension(NUMMODES) :: amtot
+  double precision :: ateff
   double precision :: a0tot
   double precision, dimension(numparts,6) :: rparts
   double precision :: r, theta
@@ -390,22 +403,31 @@ subroutine fourierdata(tau, numparts, rparts, amcostot, amsintot, a0tot)
   double precision :: v2, energy
   double precision, dimension(numparts) :: eps, semi
 
-  integer, parameter :: numradials = 45, numphi = 128
-!  double precision, parameter :: kpc = 3D21, rin = 5D0*kpc, rout=31D0*kpc, pi = 3.1415D0, diskscale = 4D0*kpc
+  integer, parameter :: numphi = 128
   double precision, dimension( numradials, numphi) :: dens
   double precision, dimension( 2*numphi) :: denstemp
   integer :: total_particles = 0
   double precision :: diskprofile, rann
-  
+  character(LEN=40) :: filename
+
+
   external :: dfour1
 
-  write(25,*) '---------'
+  write( filename, fmt='(A12,I3,A4)') "fourier_data",num,".txt"
+  open(unit=25, file=filename, status='new')  
+
+!  write( filename, fmt='(A15,E9.3,A8)') "fourier_data_t=", tau, "Gyr.data"
+!  open(unit=25, file=filename, status='new')
+  
+
+! write(filename,fmt='(A8,E9.3,A8)') "Sigma_t=", tau, "Gyr.data"
+! open(unit=26, file=filename, status='new')
 
   total_particles = 0
   i = 1
   r = rparts(i,1)
 
-  write(25,fmt='(F4.1)') r/3D21
+  !write(25,fmt='(F4.1)') r/3D21
 
   ! calculate the density
   dens = 0D0
@@ -423,10 +445,18 @@ subroutine fourierdata(tau, numparts, rparts, amcostot, amsintot, a0tot)
         end if
      end if
   end do
+
+  do i = 1, numradials
+    rann = rin + (rout-rin)*(1D0*(i-1)/numradials + 0.5D0/numradials)
+!    write(26, fmt='(129(2X,E16.6))') rann, dens(i,:)
+!    print *,'rann=',rann
+!    stop
+ end do
+
+!  close(unit=26)
   
   a0tot = 0D0
-  amcostot = 0D0
-  amsintot = 0D0
+  amtot = 0D0
 
   do i = 1, numradials
 !  i = numradials/2
@@ -462,18 +492,22 @@ subroutine fourierdata(tau, numparts, rparts, amcostot, amsintot, a0tot)
 
      if( rann > fourier_rin .and. rann < fourier_rout) then
         a0tot = a0tot + diskprofile*a0
-        amcostot = amcostot + diskprofile*amcos
-        amsintot = amsintot + diskprofile*amsin
+        amtot = amtot + diskprofile*sqrt(amcos*amcos + amsin*amsin)
+
+     write(25,fmt='(10(2X,E13.6),2X,I8)') rann, & 
+              sqrt(amcos**2D0 + amsin**2D0)/(norma0*dphi), a0/(norma0*dphi), atan(amsin/amcos), total_particles
+
      end if
 
-!     write (25,fmt='(12(2X,E13.6),2X,I8)') rann, & 
-!          sqrt(amcos**2D0 + amsin**2D0)/(norma0*dphi), a0/(norma0*dphi) - 1D0, atan(amsin/amcos), total_particles
-
-!amcos, amsin
   end do
 
-!  write (*,fmt='(11(2x,D12.6))') tau, sqrt(amcostot*amcostot + &
-!       amsintot*amsintot)/a0tot, atan(amsintot/amcostot)
+  close(unit=25)
+
+  ateff = 0D0
+  do i = 1, NUMMODES
+     ateff = ateff + (amtot(i)/a0tot)**2D0
+  end do
+  ateff = sqrt(ateff/NUMMODES)
 
   return 
 end subroutine fourierdata
@@ -497,7 +531,7 @@ subroutine integrate_orbit(stau, tau, numparts, rparts)
   double precision, intent(in) :: tau, stau
   external :: integrate_io_rk
 
-  fine = 5
+  fine = 2
 
   call integrate_io_rk(0, numparts,tau,fine,rparts,rpartsout) ! full
   rparts = rpartsout
@@ -541,6 +575,7 @@ subroutine integrate_io_rk(gc, numparts,tau,fine,rparts,rpartsout)
   rpartsout = rparts
         
   do m = 1, fine
+     !$OMP PARALLEL DO PRIVATE(i,r,vr,angmom,theta,z,vz,y,yout,height,yerr)
      do i = 1, numparts
  
         r = rpartsout(i,1)
@@ -568,6 +603,7 @@ subroutine integrate_io_rk(gc, numparts,tau,fine,rparts,rpartsout)
         rpartsout(i,5:6) = yout(5:6)
         
      end do
+     !$OMP END PARALLEL DO
 
      ! update perturber positions
      call update_perturber_positions( numparts, rpartsout)
@@ -647,8 +683,8 @@ double precision function concMaccio(massp) result (conc)
   double precision :: massp
 ! Maccio et al. 2008, eqn 9 -- 
 
-  conc = 0.971 - 0.094*log(massp/1.d12)
-  conc = 10**conc
+  conc = 0.971D0 - 0.094D0*log(massp/1.d12)
+  conc = 10D0**conc
 
 return
 
@@ -1149,29 +1185,39 @@ SUBROUTINE dfour1(data,nn,isign)
 END SUBROUTINE dfour1
 
 
-subroutine writedata(tau, numPerturbers, numparts, rparts)
+subroutine writedata(tau, numPerturbers, numparts, rparts, cnt)
   implicit none
-  integer :: numparts, i, numPerturbers
+  integer :: numparts, i, numPerturbers, cnt
+  double precision, parameter :: kms=1D5
   double precision :: tau
   double precision, dimension(numparts,6) :: rparts, vparts
-  double precision :: x,y,r,theta, z
+  double precision :: x,y,r,theta, z, vx, vy, vz, vtheta, j, vr
   double precision :: absl, absr, v2, energy
   double precision, dimension(numparts) :: eps, semi
   character(LEN=40) :: filename
-  write( filename, fmt='(A16,E9.3,A8)') "particle_data_t=", tau, "Gyr.data"
+!  write( filename, fmt='(A16,E10.3,A8)') "particle_data_t=", tau, "Gyr.data"
+  write( filename, fmt='(A13,I3,A4)') "particle_data",cnt,".txt"
   open(unit=22, file=filename, status='new')
 
-  write(22,fmt='(F5.1)') tau
+  write(22,fmt='(F5.3)') tau
 
 !  do i = numPerturbers, numparts, 1
    do i=1,numparts
      r = rparts(i,1)
+     vr = rparts(i,2)
+     j = rparts(i,3)
      theta = rparts(i,4)
+
+     vtheta = j/(r*r)
 
      x = r*cos(theta)
      y = r*sin(theta)
      z = rparts(i,5)
-     write(22,fmt='(I5,6(1X,E12.4))') i, x, y, z, r, theta
+
+     vx = vr*cos(theta) - vtheta*r*sin(theta)
+     vy = vr*sin(theta) + vtheta*r*cos(theta)
+     vz = rparts(i,6)
+     write(22,fmt='(I5,9(1X,E12.4))') i, x, y, z, vx/kms, vy/kms, vz/kms, r, theta
 
 !  write(*,fmt='(11(2X,D12.6))') tau, rparts(1,1), rparts(1,2), rparts(2,1), rparts(2,2)
      
