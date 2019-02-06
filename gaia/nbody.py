@@ -206,15 +206,22 @@ def accDF( r, vel, msat=msat) :
     accdf = (-4.*math.pi*G**2*(logLambda)*rho*(1./v**3)*(erf-2*xchandra*(1./math.sqrt(math.pi))*(math.exp(-(xchandra**2))))*msat)[:,np.newaxis]*vel
     return accdf
 
-rp = kpc*np.arange( 10., 50., 1.)
+rp = kpc*np.arange( 2., 50., 1.)
 m, rho, sigma = hernquistmass( rp)
 rhoMean = m/(4.*math.pi/3.*rp**3)
 rscale = 0.5*kpc
 vKick = np.sqrt(G*rhoMean)*rscale 
-for r, v, rho in zip(rp, vKick, rhoMean) :
-    print "{0:5.3e} {1:5.3e} {2:5.3e}".format( r/kpc, v/vkms, rho/msun*pc**3)
+for mass, r, v, rho in zip(m, rp, vKick, rhoMean) :
+    print "{0:5.3e} {1:5.3e} {2:5.3e} {3:5.3e}".format( r/kpc, v/vkms, rho/msun*pc**3, r*(1e10*msun/mass)**0.333)
 
-pl.loglog( rp/kpc, vKick/vkms)
+pl.plot( rp/kpc, rp*(1e10*msun/m)**0.333/kpc)
+rs = np.arange( 0.1, 2, 0.1)*kpc
+m, rho, sigma = hernquistmass( rs, m0=1.0e10*msun, vc200=38.7*vkms, c0=14.42)
+print m/(4*3.141/3.*rs**3)/msun*pc**3
+#pl.loglog( rs/kpc, m/msun)
+
+
+#pl.loglog( rp/kpc, vKick/vkms)
 pl.savefig("test.pdf") 
 #print "rho = {0} {1} {2}".format(m/msun/(4.*math.pi/3.*(r/pc)**3), rho*pc**3/msun, m/msun/1e10)
 pos, vel = getICs()
