@@ -117,7 +117,7 @@ def getVelSamples () :
     svy = np.random.normal(vavg[1], sigmay, nn)
     svz = np.random.normal(vavg[2], sigmaz, nn)
 
-    velocities = np.array(zip(svx,svy,svz))*vkms
+    velocities = np.array(list(zip(svx,svy,svz)))*vkms
     return velocities
 
 def NFWmass( r) : 
