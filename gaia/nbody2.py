@@ -73,14 +73,14 @@ def findTimeStep( r,v) :
     a, dt = calAcc( r, v)
     return 0.1*dt.min()
 
-def getICs() : # return ICs in galactocentric coordinates
+def getICs(pm_ra_cosdec=-0.095,pm_dec=0.058,radial_velocity=290.7) : # return ICs in galactocentric coordinates
     distance = 129.4e3*u.pc 
 
     c1 = coord.ICRS(ra=143.8868*u.degree, dec=-36.7673*u.degree,
                     distance=129.4e3*u.pc,
-                    pm_ra_cosdec=-0.095*u.mas/u.yr,
-                    pm_dec=0.058*u.mas/u.yr,
-                    radial_velocity=290.7*u.km/u.s)
+                    pm_ra_cosdec=pm_ra_cosdec*u.mas/u.yr,
+                    pm_dec=pm_dec*u.mas/u.yr,
+                    radial_velocity=radial_velocity*u.km/u.s)
 
     gc1 = c1.transform_to(coord.Galactocentric)
 
@@ -103,15 +103,12 @@ def getICs() : # return ICs in galactocentric coordinates
 
     return positions,velocities
 
-def getVelSamples () : 
+def getVelSamples( nn=10) : 
 
     vavg = [-80.93960285062732,-48.51070213345165, 50.56259604843662]
     sigmax = 22.4883097
     sigmay = 231.308893
     sigmaz = 64.9421574
-
-# number of samples :
-    nn = 10
 
     svx = np.random.normal(vavg[0], sigmax, nn)
     svy = np.random.normal(vavg[1], sigmay, nn)
@@ -119,6 +116,27 @@ def getVelSamples () :
 
     velocities = np.array(list(zip(svx,svy,svz)))*vkms
     return velocities
+
+def getICsmusample(nn=10):
+    distance = 129.4e3*u.pc
+
+# define pm samples:
+    spmracosdec = np.random.normal(-0.095, 0.018, nn)
+    spmdec = np.random.normal(0.058, 0.024, nn)
+
+    vx = np.empty(nn)
+    vy = np.empty(nn)
+    vz = np.empty(nn)
+    positions = []
+    velocities = []
+    for pm_ra_cosdec, pm_dec in zip( spmracosdec, spmdec):
+#        print ("pm_ra_cosdec=")
+#        print (pm_ra_cosdec)
+        pos, vel = getICs(pm_ra_cosdec=pm_ra_cosdec,pm_dec=pm_dec)
+        positions.append( pos)
+        velocities.append( vel)
+
+    return positions,velocities
 
 def NFWmass( r) : 
     scalelength = Rvir/cvir
@@ -237,15 +255,13 @@ vKick = np.sqrt(G*rhoMean)*rscale
 #pl.savefig("test.pdf") 
 #print "rho = {0} {1} {2}".format(m/msun/(4.*math.pi/3.*(r/pc)**3), rho*pc**3/msun, m/msun/1e10)
 posSingle, velSingle = getICs()
-
-vdist = getVelSamples()
+posSamples, velSamples = getICsmusample()
+#vdist = getVelSamples()
 
 if( not args.forward) : 
      tEnd = -tEnd
 
-for i in range(0, len(vdist)):
-     vel = np.array([vdist[i]])
-     pos = posSingle
+for pos, vel in zip( posSamples, velSamples) : 
      #print ("pos,vel")
      #print (pos, vel)
      print( "Initial positions: {0} and velocities: {1}".format(pos/kpc, vel/vkms))
