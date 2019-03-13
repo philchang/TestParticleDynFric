@@ -11,6 +11,7 @@ import galpy.potential as gp
 from galpy.util import bovy_conversion 
 import scipy
 import sys 
+#from numba import jit 
 
 parser = argparse.ArgumentParser(prog='PROG')
 parser.add_argument('--show_plot', action='store_true', help='make plots (r.pdf, xy.pdf, z.pdf)')
@@ -26,6 +27,7 @@ args = parser.parse_args()
 
 useNFW = args.use_NFW or args.use_K13
 useHernquist = args.use_Hernquist
+useDF = args.use_DF
 
 MWpot = None
 if args.use_MW : 
@@ -71,7 +73,7 @@ def derivs(t, y):
 
 def findTimeStep( r,v) : 
     a, dt = calAcc( r, v)
-    return 0.1*dt.min()
+    return 0.2*dt.min()
 
 def getICs(pm_ra_cosdec=-0.095,pm_dec=0.058,radial_velocity=290.7) : # return ICs in galactocentric coordinates
     distance = 129.4e3*u.pc 
@@ -130,8 +132,6 @@ def getICsmusample(nn=10):
     positions = []
     velocities = []
     for pm_ra_cosdec, pm_dec in zip( spmracosdec, spmdec):
-#        print ("pm_ra_cosdec=")
-#        print (pm_ra_cosdec)
         pos, vel = getICs(pm_ra_cosdec=pm_ra_cosdec,pm_dec=pm_dec)
         positions.append( pos)
         velocities.append( vel)
@@ -184,8 +184,6 @@ def hernquistmass( r, m0 = 1.29e12*msun, vc200=1.8e7, c0=9.39) :
 
 def calAcc(r, v) : 
     N = r.shape[0]
-    a = np.zeros([N,3])
-    dt_min = np.ones(N)*1e5*yrs
     dr = r
     dx = r[:,0]
     dy = r[:,1]
@@ -212,7 +210,7 @@ def calAcc(r, v) :
     dt_rmin = np.min(drNorm/np.linalg.norm(dv, axis=1))
     dt_amin = np.min(np.linalg.norm(dv,axis=1)/np.maximum(np.linalg.norm(acc,axis=1), TINY))
     dt_min = min(dt_rmin, dt_amin)
-    if(args.use_DF) : 
+    if(useDF) : 
         acc = acc + accDF( r, v)
     return acc, dt_min
 
@@ -255,7 +253,7 @@ vKick = np.sqrt(G*rhoMean)*rscale
 #pl.savefig("test.pdf") 
 #print "rho = {0} {1} {2}".format(m/msun/(4.*math.pi/3.*(r/pc)**3), rho*pc**3/msun, m/msun/1e10)
 posSingle, velSingle = getICs()
-posSamples, velSamples = getICsmusample()
+posSamples, velSamples = getICsmusample( nn = 50)
 #vdist = getVelSamples()
 
 if( not args.forward) : 
