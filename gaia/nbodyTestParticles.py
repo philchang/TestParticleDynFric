@@ -371,7 +371,11 @@ for posSat, velSat in zip( posSamples, velSamples) :
     #print ("pos,vel")
     #print (pos, vel)
     # we have run it backwards -- now run forward
-    t, posSatInit, velSatInit = getStartingPosition( posSat, velSat)
+    t = 0.
+    posSatInit = None
+    velSatInit = None
+    if( rank == 0) : 
+        t, posSatInit, velSatInit = getStartingPosition( posSat, velSat)
     
     if( useTestParticles) : 
         if( useMPI) : 
