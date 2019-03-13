@@ -92,8 +92,9 @@ vc200sat = vc200*(msat/M0)**0.333e0
 c0sat[:] = 9.39 
 
 # test Particle parameters
-nDisk = 1000000
-rbins = 500
+nDisk = 200000
+rbins = 100
+nSatellite  = 10000
 
 tEnd = 0.5*Gyrs # in the future
 tStart = -0.5*Gyrs # in the past
@@ -118,7 +119,7 @@ def derivs(t, y):
 
 def findTimeStep( r,v) : 
     a, dt = calAcc( r, v)
-    return 0.2*dt.min()
+    return 0.1*dt.min()
 
 def getTestICs() : 
     x = 0.
@@ -365,6 +366,30 @@ def setupDiskParticles( nDisk=nDisk, rbins=rbins, rin = 2.*kpc, rout=30.*kpc) :
     
     return pos, vel
 
+def setupSatParticles( pos, vel, nSatellite=nSatellite, msat=msat[0], vcsat = vc200sat[0], c0sat = c0sat[0], rout=2.*kpc) :
+    nRandom = int(nSatellite*1.2*8./(4.*math.pi/3.))
+    x = 2.*rout*(np.random.rand(nRandom)-0.5)
+    y = 2.*rout*(np.random.rand(nRandom)-0.5)
+    z = 2.*rout*(np.random.rand(nRandom)-0.5)
+    r = np.sqrt(x*x + y*y + z*z)
+    posParticles = np.array(zip(x,y,z))[r<rout,:]
+    posParticles = posParticles[0:nSatellite,:] + pos[np.newaxis,:]
+    hernquistmass(r, m0=msat, vc200=vcsat, c0=c0sat)
+    r = r[r<rout][0:nSatellite]
+    v = np.sqrt(G*msat/r)
+    vx = 2.*(np.random.rand(nSatellite)-0.5)
+    vy = 2.*(np.random.rand(nSatellite)-0.5)
+    vz = 2.*(np.random.rand(nSatellite)-0.5)
+    vr = np.sqrt(vx*vx + vy*vy + vz*vz)
+
+    vx = v*vx/r
+    vy = v*vy/r
+    vz = v*vz/r
+
+    velParticles = np.array(zip(vx,vy,vz)) + vel[np.newaxis,:]
+
+    return posParticles, velParticles    
+
 
 rp = kpc*np.arange( 10., 50., 1.)
 m, rho, sigma = hernquistmass( rp)
@@ -401,19 +426,31 @@ for posSat, velSat in zip( posSamples, velSamples) :
         dt = 0
 
         posDisk, velDisk = setupDiskParticles()
+        posTestSat, velTestSat   = setupSatParticles(posSatInit[0], velSatInit[0])
 
         Ntest = 0
+        NtestDisk = 0
+        NtestSat = 0
         if useMPI : 
             if rank == 0:
-                Ntest = posDisk.shape[0]
-                posDisk = posDisk.reshape(size,Ntest/size,3)
-                velDisk = velDisk.reshape(size,Ntest/size,3)
-                
+                NtestDisk = posDisk.shape[0]
+                posDisk = posDisk.reshape(size,NtestDisk/size,3)
+                velDisk = velDisk.reshape(size,NtestDisk/size,3)
+
+                NtestSat = posTestSat.shape[0]
+                posTestSat = posTestSat.reshape(size,NtestSat/size,3)
+                velTestSat = velTestSat.reshape(size,NtestSat/size,3)
+                Ntest = NtestDisk + NtestSat
+
             posDisk = comm.scatter(posDisk, root=0)
             velDisk = comm.scatter(velDisk, root=0)
+            posTestSat = comm.scatter(posTestSat, root=0)
+            velTestSat = comm.scatter(velTestSat, root=0)
 
-        pos = np.append( posSatInit, posDisk,axis=0)
-        vel = np.append( velSatInit, velDisk,axis=0)
+        pos = np.append( posSatInit, posDisk, axis=0)
+        vel = np.append( velSatInit, velDisk, axis=0)
+        pos = np.append( pos, posTestSat, axis=0)
+        vel = np.append( vel, velTestSat, axis=0)
         t = 0. # needs to be zeroed again
         N = pos.shape[0] # reset to include test particles
         y0 = np.array([pos,vel]).flatten()
@@ -427,7 +464,7 @@ for posSat, velSat in zip( posSamples, velSamples) :
             start = timer()
             while integral.successful() and t < tNext : 
                 dt = min(findTimeStep(pos,vel),tNext-t)
-                #print( "t={0:.3f} {1:.3e}".format(integral.t/Gyrs, dt/Gyrs))
+                print( "t={0:.3f} {1:.3e}".format(integral.t/Gyrs, dt/Gyrs))
                 y = integral.integrate( integral.t+dt)
                 t = integral.t
                 arr = y.reshape(2,N,3)
@@ -470,6 +507,24 @@ for posSat, velSat in zip( posSamples, velSamples) :
                 plotName = "frame{0:04d}.png".format(iFrame)
                 print( "making plot: {0}".format(plotName))
                 pl.savefig( plotName)
+                pl.close(fig)
+
+                pl.clf()
+                fig = pl.figure()
+                ax = fig.add_subplot(111)
+                ax.set_aspect('equal')
+                ax.scatter( xDisk-xSat, yDisk-ySat, s=1)
+                ax.set_xlim(-4,4)
+                ax.set_ylim(-4,4)
+                pl.xlabel( "x [kpc]", fontsize=20)
+                pl.ylabel( "y [kpc]", fontsize=20)
+                ax.text(1.0,3.5, "t={0:.3f} Gyrs".format((t+tStart)/Gyrs), fontsize=14)
+
+                plotName = "movie_frame{0:04d}.png".format(iFrame)
+                print( "making plot: {0}".format(plotName))
+                pl.savefig( plotName)
+                pl.close(fig)
+
                 pl.close(fig)
             end = timer()
             if rank == 0 :
