@@ -82,8 +82,8 @@ vc200sat = vc200*(msat/M0)**0.333e0
 c0sat[:] = 9.39 
 
 # test Particle parameters
-nDisk = 20000
-rbins = 200
+nDisk = 1000000
+rbins = 500
 
 tEnd = 0.5*Gyrs # in the future
 tStart = -0.5*Gyrs # in the past
