@@ -3,12 +3,19 @@ from scipy.integrate import ode
 import argparse
 import math
 
+try :
+    import matplotlib
+    matplotlib.use("Agg")
+except ImportError : 
+    print( "Running without matplotlib")
+
 import astropy.coordinates as coord
 import astropy.units as u
 import galpy.potential as gp
 from galpy.util import bovy_conversion 
 import scipy
 import sys 
+
 
 useMPI = True
 try :
@@ -25,6 +32,9 @@ if useMPI :
     size = comm.Get_size()
     if size < 2 : 
         useMPI = False
+    else : 
+        if rank == 0 :
+	    print( "Running with MPI") 
 
 #from numba import jit 
 
@@ -460,6 +470,7 @@ for posSat, velSat in zip( posSamples, velSamples) :
                 plotName = "frame{0:04d}.png".format(iFrame)
                 print( "making plot: {0}".format(plotName))
                 pl.savefig( plotName)
+                pl.close(fig)
             end = timer()
             if rank == 0 :
                 print(end - start) # Time in seconds, e.g. 5.38091952400282
