@@ -374,17 +374,17 @@ def setupSatParticles( pos, vel, nSatellite=nSatellite, msat=msat[0], vcsat = vc
     r = np.sqrt(x*x + y*y + z*z)
     posParticles = np.array(zip(x,y,z))[r<rout,:]
     posParticles = posParticles[0:nSatellite,:] + pos[np.newaxis,:]
-    hernquistmass(r, m0=msat, vc200=vcsat, c0=c0sat)
     r = r[r<rout][0:nSatellite]
-    v = np.sqrt(G*msat/r)
+    m, rho, sigma = hernquistmass(r, m0=msat, vc200=vcsat, c0=c0sat)
+    v = np.sqrt(G*m/r)
     vx = 2.*(np.random.rand(nSatellite)-0.5)
     vy = 2.*(np.random.rand(nSatellite)-0.5)
     vz = 2.*(np.random.rand(nSatellite)-0.5)
     vr = np.sqrt(vx*vx + vy*vy + vz*vz)
 
-    vx = v*vx/r
-    vy = v*vy/r
-    vz = v*vz/r
+    vx = v*vx/vr
+    vy = v*vy/vr
+    vz = v*vz/vr
 
     velParticles = np.array(zip(vx,vy,vz)) + vel[np.newaxis,:]
 
@@ -464,7 +464,7 @@ for posSat, velSat in zip( posSamples, velSamples) :
             start = timer()
             while integral.successful() and t < tNext : 
                 dt = min(findTimeStep(pos,vel),tNext-t)
-                print( "t={0:.3f} {1:.3e}".format(integral.t/Gyrs, dt/Gyrs))
+                #print( "t={0:.3f} {1:.3e}".format(integral.t/Gyrs, dt/Gyrs))
                 y = integral.integrate( integral.t+dt)
                 t = integral.t
                 arr = y.reshape(2,N,3)
