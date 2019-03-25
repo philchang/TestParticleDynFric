@@ -87,18 +87,18 @@ c0=9.39
 Nsat = 1
 msat = np.zeros(Nsat)
 c0sat = np.zeros(Nsat)
-msat[0] = 1e10*msun
+msat[0] = 1e8*msun
 vc200sat = vc200*(msat/M0)**0.333e0
 c0sat[:] = 9.39 
 
 # test Particle parameters
-nDisk = 200000
+nDisk = 100
 rbins = 100
 nSatellite  = 10000
 
 tEnd = 0.5*Gyrs # in the future
 tStart = -0.5*Gyrs # in the past
-tStep = 0.025*Gyrs
+tStep = 0.05*Gyrs
 
 if args.use_K13 :
     # K13 values
@@ -134,6 +134,18 @@ def getTestICs() :
     velocities = np.array([[[vx,vy,vz]]])
     return positions,velocities
 
+def getSpecificICs() :
+    x = -31.23593361*kpc 
+    y = 128.61252308*kpc 
+    z = -5.5784614*kpc
+
+    vx = 57.78276892*vkms
+    vy = -107.27936341*vkms 
+    vz = -7.88558141*vkms
+
+    positions = np.array( [[x,y,z]])
+    velocities = np.array([[vx,vy,vz]])
+    return -1*Gyrs, positions, velocities
 
 def getICs(pm_ra_cosdec=-0.095,pm_dec=0.058,radial_velocity=290.7) : # return ICs in galactocentric coordinates
     distance = 129.4e3*u.pc 
@@ -390,6 +402,22 @@ def setupSatParticles( pos, vel, nSatellite=nSatellite, msat=msat[0], vcsat = vc
 
     return posParticles, velParticles    
 
+def fourierModes( xDisk, yDisk, rin=10, rout=25, rbins=15, phiBins=60) :
+    r = np.sqrt(xDisk*xDisk + yDisk*yDisk) 
+    theta = np.arctan2(yDisk/r, xDisk/r) # note that x,y are reverse for arctan2
+    rArray = []
+    fftArray = []
+    for i in range(rbins) : 
+        r1 = rin + (rout-rin)/rbins*i
+        r2 = rin + (rout-rin)/rbins*(i+1)
+        boolArray = np.logical_and( r>= r1, r < r2)
+        thetaBins, edges = np.histogram( theta[boolArray],bins=phiBins,range=[-math.pi, math.pi])
+        fftTheta = np.fft.rfft(thetaBins)
+        rArray.append( 0.5*(r1+r2))
+        fftArray.append( fftTheta[0:5])
+
+    return rArray, fftArray
+
 
 rp = kpc*np.arange( 10., 50., 1.)
 m, rho, sigma = hernquistmass( rp)
@@ -410,7 +438,9 @@ for posSat, velSat in zip( posSamples, velSamples) :
     posSatInit = None
     velSatInit = None
     if( rank == 0) : 
-        t, posSatInit, velSatInit = getStartingPosition( posSat, velSat)
+        #t, posSatInit, velSatInit = getStartingPosition( posSat, velSat)
+        t, posSatInit, velSatInit = getSpecificICs()
+        print(posSatInit.shape)
     
     if( useTestParticles) : 
         if( useMPI) : 
@@ -431,26 +461,32 @@ for posSat, velSat in zip( posSamples, velSamples) :
         Ntest = 0
         NtestDisk = 0
         NtestSat = 0
+        useTestSat = False
         if useMPI : 
             if rank == 0:
                 NtestDisk = posDisk.shape[0]
                 posDisk = posDisk.reshape(size,NtestDisk/size,3)
                 velDisk = velDisk.reshape(size,NtestDisk/size,3)
-
-                NtestSat = posTestSat.shape[0]
-                posTestSat = posTestSat.reshape(size,NtestSat/size,3)
-                velTestSat = velTestSat.reshape(size,NtestSat/size,3)
-                Ntest = NtestDisk + NtestSat
+                if( useTestSat) :
+                    NtestSat = posTestSat.shape[0]
+                    posTestSat = posTestSat.reshape(size,NtestSat/size,3)
+                    velTestSat = velTestSat.reshape(size,NtestSat/size,3)
+                    Ntest = NtestDisk + NtestSat
+                else : 
+                    Ntest = NtestDisk
 
             posDisk = comm.scatter(posDisk, root=0)
             velDisk = comm.scatter(velDisk, root=0)
-            posTestSat = comm.scatter(posTestSat, root=0)
-            velTestSat = comm.scatter(velTestSat, root=0)
-
+            if( useTestSat) :
+                posTestSat = comm.scatter(posTestSat, root=0)
+                velTestSat = comm.scatter(velTestSat, root=0)
         pos = np.append( posSatInit, posDisk, axis=0)
         vel = np.append( velSatInit, velDisk, axis=0)
-        pos = np.append( pos, posTestSat, axis=0)
-        vel = np.append( vel, velTestSat, axis=0)
+
+        if( useTestSat) : 
+            pos = np.append( pos, posTestSat, axis=0)
+            vel = np.append( vel, velTestSat, axis=0)
+        tStart = t
         t = 0. # needs to be zeroed again
         N = pos.shape[0] # reset to include test particles
         y0 = np.array([pos,vel]).flatten()
@@ -476,11 +512,19 @@ for posSat, velSat in zip( posSamples, velSamples) :
                 #print( "r={0:.3f}".format(r[0]/kpc))
             
             if useMPI : 
+		#if(rank == 0 ):
+                #    print('sync')
+ 	        print(rank, t)
                 data1 = comm.gather(pos[Nsat:,:], root=0)
+		#if(rank == 0 ) :
+                #    print('sync 2')
                 data2 = comm.gather(vel[Nsat:,:], root=0)
+		#if(rank == 0 ) :
+                #    print('finish sync')
                 if( rank == 0 ) :
                     pos = np.append(posSat,np.array(data1).reshape(Ntest,3),axis=0)
                     vel = np.append(velSat,np.array(data2).reshape(Ntest,3),axis=0)
+
 
             if( args.show_plot and rank == 0) : 
                 import matplotlib.pyplot as pl
@@ -491,9 +535,22 @@ for posSat, velSat in zip( posSamples, velSamples) :
                 yDisk = posTest[:,1]/kpc
                 xSat = posSat[:,0]/kpc
                 ySat = posSat[:,1]/kpc
+                #r, fft = fourierModes(xDisk, yDisk)
+                iFrame = iFrame + 1
 
                 pl.clf()
-                iFrame = iFrame + 1
+                fig = pl.figure()
+                ax = fig.add_subplot(111)
+                #print( np.abs(fft))
+                #ax.plot( r, np.abs(fft/fft[0]), lw=2)
+                ax.set_xlim(10,25)
+                ax.set_ylim(0,0.4)
+                ax.text(12,0.2, "t={0:.3f} Gyrs".format((t+tStart)/Gyrs), fontsize=14)
+                plotName = "fft_frame{0:04d}.png".format(iFrame)
+                print( "making plot: {0}".format(plotName))
+                #pl.savefig( plotName)
+
+                pl.clf()
                 fig = pl.figure()
                 ax = fig.add_subplot(111)
                 ax.set_aspect('equal')
@@ -501,8 +558,8 @@ for posSat, velSat in zip( posSamples, velSamples) :
                 ax.scatter( xSat, ySat, s=10, color="red")
                 pl.xlabel( "x [kpc]", fontsize=20)
                 pl.ylabel( "y [kpc]", fontsize=20)
-                ax.set_xlim(-35,35)
-                ax.set_ylim(-35,35)
+                ax.set_xlim(-100,100)
+                ax.set_ylim(-100,100)
                 ax.text(8,31, "t={0:.3f} Gyrs".format((t+tStart)/Gyrs), fontsize=14)
                 plotName = "frame{0:04d}.png".format(iFrame)
                 print( "making plot: {0}".format(plotName))
@@ -529,6 +586,3 @@ for posSat, velSat in zip( posSamples, velSamples) :
             end = timer()
             if rank == 0 :
                 print(end - start) # Time in seconds, e.g. 5.38091952400282
-
-
-
