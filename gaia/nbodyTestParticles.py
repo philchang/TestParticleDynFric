@@ -248,13 +248,23 @@ def NFWmass( r) :
 
     return m,rho,sigma
 
-def hernquistmass( r, m0 = M0, vc200=vc200, c0=c0) : 
-    r200 = G*m0/(vc200*vc200)
+def hernquistmass( r, m0 = -1, r200=190*kpc, vc200=1.9e7, c0=9.39) : 
+    
+    if( m0 < 0.) :
+        m200 = (vc200*vc200)/G*r200
+        rs = r200/c0
+        a = rs*math.sqrt(2.*(math.log(1.+c0) - c0/(1.+c0)))
+        m0 = m200*(r200+a)*(r200+a)/(r200*r200)
+    else :
+        r200 = G*m0/(vc200*vc200)
+    
     rs = r200/c0
+
     a = rs*math.sqrt(2.*(math.log(1.+c0) - c0/(1.+c0)))
+    rs = r200/c0
     m = m0 * r*r/((r+a)*(r+a))
+
     rho = (m0/(2.*math.pi))*(a/(r*(r+a)**3.))
-    r=r200
     Vmax = 215.*vkms  # for V200 = 160                                                                                 
     rs = r200/c0
     x = r/rs  # Zentner & Bullock 2003, equation 6                                                                      
@@ -424,6 +434,9 @@ def fourierModes( xDisk, yDisk, rin=10, rout=30, rbins=20, phiBins=180) :
 
     return np.array(rArray), np.array(fftArray)
 
+def phaseSpace( posDisk, center, radius) : 
+    r = np.linalg.norm(posDisk[:,:]/kpc - center[np.newaxis,:], axis=1)
+    
 
 rp = kpc*np.arange( 10., 50., 1.)
 m, rho, sigma = hernquistmass( rp)
@@ -620,7 +633,7 @@ for posSat, velSat in zip( posSamples, velSamples) :
        import matplotlib.pyplot as pl
        pl.clf()
        pl.scatter( rperiArray, ateffArray, s=4)
-       pl.xlim(0.,40.)
+       pl.xlim(0.,70.)
        pl.ylim(0.,0.35)
        pl.xlabel( r"$r_{p}$", fontsize=20)
        pl.ylabel( r"$a_{t,eff}$", fontsize=20)

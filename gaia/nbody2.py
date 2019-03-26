@@ -169,11 +169,14 @@ def NFWmass( r) :
 
     return m,rho,sigma
 
-def hernquistmass( r, m0 = 1.29e12*msun, vc200=1.8e7, c0=9.39) : 
-    r200 = G*m0/(vc200*vc200)
-    rs = r200/c0
-    a = rs*math.sqrt(2.*(math.log(1.+c0) - c0/(1.+c0)))
+def hernquistmass( r, m0 = None, r200=220*kpc, vc200=2.2e7, c0=9.39) : 
+    if( isNone(m0)) :
+        m200 = (vc200*vc200)/G*r200
+        rs = r200/c0
+        a = rs*math.sqrt(2.*(math.log(1.+c0) - c0/(1.+c0)))
+        m0 = m200*(r200+a)**2/r200**2 
     m = m0 * r*r/((r+a)*(r+a))
+
     rho = (m0/(2.*math.pi))*(a/(r*(r+a)**3.))
 
     Vmax = 215.*vkms  # for V200 = 160                                                                                 
