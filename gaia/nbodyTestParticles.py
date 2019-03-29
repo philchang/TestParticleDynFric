@@ -15,7 +15,7 @@ import galpy.potential as gp
 from galpy.util import bovy_conversion 
 import scipy
 import sys 
-
+np.random.seed(100)
 
 useMPI = True
 try :
@@ -49,6 +49,10 @@ parser.add_argument('--use_Hernquist', action='store_true', help='NFW Potential'
 parser.add_argument('--use_DF', action='store_true')
 parser.add_argument('--use_TestParticles', action='store_true')
 parser.add_argument('--run_test', action='store_true')
+parser.add_argument('--run_phase', action='store_true')
+parser.add_argument('--show_evolution', action='store_true')
+parser.add_argument('--no_sat', action='store_true')
+
 args = parser.parse_args()
 
 useNFW = args.use_NFW or args.use_K13
@@ -79,26 +83,36 @@ cvir = 9.56
 Rvir = 299.*kpc
 
 # for hernquist
-M0 = 1.25e12*msun
-vc200=1.6e7
+vc200=2.0e7
+r200 = 200*kpc
 c0=9.39
 
 # satellite parameters for hernquist
+runSat = True
 Nsat = 1
 msat = np.zeros(Nsat)
 c0sat = np.zeros(Nsat)
 msat[0] = 1e10*msun
-vc200sat = vc200*(msat/M0)**0.333e0
-c0sat[:] = 9.39 
+vc200sat = [vc200*(1e-2)**0.333e0]
+r200sat = [vc200/vkms*kpc]
+c0sat[:] = 13.
 
 # test Particle parameters
-nDisk = 100000
+nDisk = 200000
 rbins = 200
 nSatellite  = 10000
 
-tEnd = 0.*Gyrs # in the future
+tEnd = 0.5*Gyrs # in the future
 tStart = -1.*Gyrs # in the past
-tStep = 0.025*Gyrs
+tStep = 0.05*Gyrs
+
+if args.run_phase or args.no_sat :
+    runSat = False
+
+if args.run_test : 
+    tEnd = 1.5*Gyrs # in the future
+    tStart = -0.5*Gyrs # in the past
+
 
 if args.use_K13 :
     # K13 values
@@ -121,14 +135,14 @@ def findTimeStep( r,v) :
     a, dt = calAcc( r, v)
     return 0.1*dt.min()
 
-def getTestICs(nn=20,rin=5,rout=40) : 
+def getTestICs(nn=1,rin=10,rout=40) : 
     x = np.zeros(nn) 
     y = np.arange(rin,rout,(rout-rin)/nn)*kpc
     z = np.zeros(nn)
 
-    vx = -500.*vkms*np.ones(nn)
+    vx = np.zeros(nn)
     vy = np.zeros(nn)
-    vz = np.zeros(nn)
+    vz = -500.*vkms*np.ones(nn)
 
     positions = []
     velocities = []
@@ -248,7 +262,7 @@ def NFWmass( r) :
 
     return m,rho,sigma
 
-def hernquistmass( r, m0 = -1, r200=190*kpc, vc200=1.9e7, c0=9.39) : 
+def hernquistmass( r, m0 = -1, r200=200*kpc, vc200=2e7, c0=9.39) : 
     
     if( m0 < 0.) :
         m200 = (vc200*vc200)/G*r200
@@ -259,7 +273,6 @@ def hernquistmass( r, m0 = -1, r200=190*kpc, vc200=1.9e7, c0=9.39) :
         r200 = G*m0/(vc200*vc200)
     
     rs = r200/c0
-
     a = rs*math.sqrt(2.*(math.log(1.+c0) - c0/(1.+c0)))
     rs = r200/c0
     m = m0 * r*r/((r+a)*(r+a))
@@ -301,13 +314,13 @@ def calAcc(r, v) :
     dt_min = min(dt_rmin, dt_amin)
     if(useDF) : 
         acc[:Nsat,:] = acc[:Nsat,:] + accDF( r[:Nsat,:], v[:Nsat,:])
-    if(useTestParticles and Nsat < N) :
+    if(useTestParticles and Nsat < N and runSat) :
         # include accelerations from other satellites for test particles
         for i in range(Nsat) : 
             rsat = r[i]
             dr = r[Nsat:,:] - rsat[np.newaxis,:]
             drNorm = np.linalg.norm( dr, axis=1)
-            m, rho, sigma = hernquistmass( drNorm, m0=msat[i], vc200=vc200sat[i], c0=c0sat[i])
+            m, rho, sigma = hernquistmass( drNorm, m0=msat[i], vc200=vc200sat[i], r200=r200sat[i], c0=c0sat[i])
             acc[Nsat:,:] =  acc[Nsat:,:] - (G*m/(drNorm*drNorm*drNorm))[:,np.newaxis]*dr
     return acc, dt_min
 
@@ -339,7 +352,6 @@ def accDF( r, vel, msat=msat) :
     return accdf
 
 def getStartingPosition(pos, vel, tEnd = tStart) :
-    #print( "Initial positions: {0} and velocities: {1}".format(pos/kpc, vel/vkms))
     N = pos.shape[0]
 
     t = 0.
@@ -352,7 +364,7 @@ def getStartingPosition(pos, vel, tEnd = tStart) :
     xArr = []
     yArr = []
     zArr = []
-
+    rperi = 100
     while integral.successful() and tEnd < t :
         dt = max(-findTimeStep(pos,vel),tEnd-t)
         y = integral.integrate( integral.t+dt)
@@ -367,12 +379,11 @@ def getStartingPosition(pos, vel, tEnd = tStart) :
         tArray.append(t/Gyrs)
         rArray.append(r[0]/kpc)
 
-    minr = np.array(rArray).argmin()
-    #print( "Ending positions: {0} and velocities: {1}".format(pos/kpc, vel/vkms))
+    minr = np.array(rArray).min()
 
-    return t, pos,vel
+    return t, pos,vel, minr
 
-def setupDiskParticles( nDisk=nDisk, rbins=rbins, rin = 5.*kpc, rout=30.*kpc) :
+def setupDiskParticles( nDisk=nDisk, rbins=rbins, rin = 5.*kpc, rout=30.*kpc, kick = 0.) :
     thetaBins = int(nDisk/rbins)
     dr = (rout-rin)/rbins
     r = np.arange(rin+0.5*dr, rout+0.5*dr, dr)
@@ -391,7 +402,13 @@ def setupDiskParticles( nDisk=nDisk, rbins=rbins, rin = 5.*kpc, rout=30.*kpc) :
         v = math.sqrt(G*m[i]/(r[i]))
         vel[i*thetaBins:(i+1)*thetaBins,0] = -v*sinx
         vel[i*thetaBins:(i+1)*thetaBins,1] = v*cosx
-    
+   
+        if(kick > 0. and False) :
+           vel[i*thetaBins:(i+1)*thetaBins,0] += 0.5*kick*vkms*cosx*(2.*np.random.rand(thetaBins) - 1.) + kick*vkms*cosx
+           vel[i*thetaBins:(i+1)*thetaBins,1] += 0.5*kick*vkms*sinx*(2.*np.random.rand(thetaBins) - 1.) + kick*vkms*sinx
+ 
+        vel[:,2] = kick*vkms*(2.*np.random.rand(numParticles) - 1.) + kick*vkms
+
     return pos, vel
 
 def setupSatParticles( pos, vel, nSatellite=nSatellite, msat=msat[0], vcsat = vc200sat[0], c0sat = c0sat[0], rout=2.*kpc) :
@@ -418,9 +435,24 @@ def setupSatParticles( pos, vel, nSatellite=nSatellite, msat=msat[0], vcsat = vc
 
     return posParticles, velParticles    
 
+def cut( xDisk, yDisk, rin=8) :
+    r = np.sqrt(xDisk*xDisk + yDisk*yDisk) 
+    x0 = [8, -8]
+    cutArray = None
+    thetaCut1 = np.arctan2(yDisk, xDisk-x0[0])
+    thetaCut2 = np.arctan2(yDisk, xDisk-x0[1])
+    thetaCut1[thetaCut1 < 0] += 2.*math.pi
+    #thetaCut2[thetaCut2 < 0] += 2.*math.pi
+    cut = 15./360.*2.*math.pi
+    cutArray = np.logical_and( r > rin, np.logical_and( np.abs(thetaCut1 - np.pi) > cut,np.abs(thetaCut2 ) > cut))
+    return cutArray
+
 def fourierModes( xDisk, yDisk, rin=10, rout=30, rbins=20, phiBins=180) :
     r = np.sqrt(xDisk*xDisk + yDisk*yDisk) 
     theta = np.arctan2(yDisk/r, xDisk/r) # note that x,y are reverse for arctan2
+    cutArray = cut( xDisk, yDisk)
+    theta = theta[cutArray]
+    r = r[cutArray]
     rArray = []
     fftArray = []
     for i in range(rbins) : 
@@ -434,17 +466,46 @@ def fourierModes( xDisk, yDisk, rin=10, rout=30, rbins=20, phiBins=180) :
 
     return np.array(rArray), np.array(fftArray)
 
-def phaseSpace( posDisk, center, radius) : 
-    r = np.linalg.norm(posDisk[:,:]/kpc - center[np.newaxis,:], axis=1)
-    
+def angularMomentum( posDisk, velDisk) : 
+    L = posDisk[:,0]*velDisk[:,1] - posDisk[:,1]*velDisk[:,0]
+    return L
+
+
+def phaseSpace( posDisk, velDisk, rOrig, LOrig, center, radius) : 
+    rCut = np.linalg.norm(posDisk[:,:]/kpc - center[np.newaxis,:], axis=1)
+    cut = rCut < radius
+    pos = posDisk[cut,0:2]
+    r = np.linalg.norm(pos/kpc, axis = 1)
+    deltaR = r - rOrig[cut]/kpc
+    deltaL = angularMomentum(posDisk[cut], velDisk[cut])/LOrig[cut] - 1.
+    rhat = np.zeros([pos.shape[0],3])
+    rhat[:,0:2] = pos[:,0:2]/r[:,np.newaxis]/kpc
+    deltaVr = []
+    deltaVz = []
+    deltaZ = posDisk[cut,2]/kpc
+    for v, rh in zip( velDisk[cut,:], rhat) : 
+        deltaVr.append(np.dot(v/vkms,rh))
+        deltaVz.append(v[2]/vkms)
+    deltaVr = np.array(deltaVr)
+    deltaVz = np.array(deltaVz)
+    return deltaR, deltaVr, deltaZ, deltaVz, deltaL
 
 rp = kpc*np.arange( 10., 50., 1.)
 m, rho, sigma = hernquistmass( rp)
 rhoMean = m/(4.*math.pi/3.*rp**3)
 rscale = 0.5*kpc
 vKick = np.sqrt(G*rhoMean)*rscale 
-posSamples, velSamples = getICsmusample( nn = 50)
-if( args.run_test) :
+posSamples = None
+velSamples = None
+
+if( not (args.run_test or args.run_phase)) : 
+   if( rank == 0) :
+      print("Getting samples")
+   posSamples, velSamples = getICsmusample( nn = 500)
+   if( rank == 0) :
+      print("finished samples")
+
+if( args.run_test or args.run_phase) :
     posSamples, velSamples = getTestICs()
 #posSamples, velSamples = getICsmusample( nn = 1)
 #vdist = getVelSamples()
@@ -457,10 +518,9 @@ for posSat, velSat in zip( posSamples, velSamples) :
     t = 0.
     posSatInit = None
     velSatInit = None
-    rStart = 12.
-    rperi = 100.
+    rStart = 10.
     if( rank == 0) : 
-        t, posSatInit, velSatInit = getStartingPosition( posSat, velSat)
+        t, posSatInit, velSatInit, rperi = getStartingPosition( posSat, velSat)
         #t, posSatInit, velSatInit = getSpecificICs()
     
     if( useTestParticles) : 
@@ -473,14 +533,26 @@ for posSat, velSat in zip( posSamples, velSamples) :
             posSatInit = data[0]
             velSatInit = data[1]
             if rank == 0:
-                data = np.array([t])
+                data = np.array([t,rperi])
 
             data = comm.bcast(data, root=0) # broadcast the array from rank 0 to all others
             t = data[0]
+            rperi = data[1]
+
+        if( rperi > 40.) :
+            if( rank == 0) :
+                print("skipping rperi={0:.2f}".format(rperi))
+            continue
+        if( rank == 0) : 
+            print( "going with rperi = {0:.2f}".format(rperi))
 
         dt = 0
-
-        posDisk, velDisk = setupDiskParticles()
+	kick = 0.
+        if args.run_phase : 
+            kick = 30.
+        posDisk, velDisk = setupDiskParticles(kick = kick)
+        rOrig = np.linalg.norm( posDisk[:,0:2], axis=1)
+        LOrig = angularMomentum( posDisk, velDisk)
         posTestSat, velTestSat   = setupSatParticles(posSatInit[0], velSatInit[0])
 
         Ntest = 0
@@ -545,7 +617,7 @@ for posSat, velSat in zip( posSamples, velSamples) :
                     pos = np.append(posSat,np.array(data1).reshape(Ntest,3),axis=0)
                     vel = np.append(velSat,np.array(data2).reshape(Ntest,3),axis=0)
 
-            if( args.show_plot and rank == 0 and isLast) : 
+            if( args.show_plot and rank == 0 and (args.show_evolution or isLast)) : 
             #if( args.show_plot and rank == 0) : 
                 import matplotlib.pyplot as pl
                 from scipy.stats.kde import gaussian_kde
@@ -558,28 +630,64 @@ for posSat, velSat in zip( posSamples, velSamples) :
                 #xDisk = 70*(np.random.rand(1000000) - 0.5)
                 #yDisk = 70*(np.random.rand(1000000) - 0.5)
                 r, fft = fourierModes(xDisk, yDisk)
-                iFrame = iFrame + 1
 
-                #endSuffix = "{0:04d}.png".format(iFrame)
+                posDisk = posTest[:NtestDisk]
+                velDisk = velTest[:NtestDisk]
+                center = np.array([8.,0.,0.])
+                radius = 3.0
+                dr, dvr, dz, dvz, dL = phaseSpace( posDisk, velDisk, rOrig, LOrig, center, radius)
+                
+                iFrame = iFrame + 1
+                
                 endSuffix = "{0:05.2f}.png".format(rperi)
+
+                if( args.show_evolution) :
+                    endSuffix = "{0:04d}.png".format(iFrame)
+                    
+                pl.clf()
+                fig = pl.figure()
+                ax = fig.add_subplot(111)
+                #ax.set_aspect('equal')
+
+                ax.scatter(dr,dvr,s=2)
+                ##ax.set_xlim(-1,1)
+                ##ax.set_ylim(-1,1)
+                plotName = "rvr_frame{0}".format(endSuffix)
+                print( "making plot: {0}".format(plotName))
+                pl.savefig( plotName)
+                pl.close(fig)
 
                 pl.clf()
                 fig = pl.figure()
                 ax = fig.add_subplot(111)
-		for i in range(1,fft.shape[1]) :
+                #ax.set_aspect('equal')
+
+                ax.scatter(dz,dvz,s=2)
+                ##ax.set_xlim(-1,1)
+                ##ax.set_ylim(-1,1)
+                plotName = "zvz_frame{0}".format(endSuffix)
+                print( "making plot: {0}".format(plotName))
+                pl.savefig( plotName)
+                pl.close(fig)
+
+
+                pl.clf()
+                fig = pl.figure()
+                ax = fig.add_subplot(111)
+                for i in range(1,fft.shape[1]) :
                     ax.plot( r, np.abs(fft[:,i])/np.abs(fft[:,0]), lw=2,label="m={0}".format(i))
                 am = np.abs(fft[:,1:])/np.abs(fft[:,0])[:,np.newaxis]
-                deltar = 10.
+                deltar = 15.
                 dr = r[1]-r[0]
                 ameff = am[np.logical_and(r>=rStart,r<rStart+deltar),:].sum(axis=0)*dr/deltar
-                ateff = 2*math.sqrt((ameff*ameff).mean())
+                ateff = math.sqrt((ameff*ameff).mean())
                 rperiArray.append( rperi)
                 ateffArray.append( ateff)
                 ax.set_xlim(10,25)
                 ax.set_ylim(0,0.4)
                 ax.text(12,0.2, "t={0:.3f} Gyrs".format((t+tStart)/Gyrs), fontsize=14)
                 plotName = "fft_frame{0}".format(endSuffix)
-                print( "making plot: {0}".format(plotName))
+                print( "making plot: {0} with ateff{1:.3e}".format(plotName, ateff))
                 pl.legend(loc="best")
                 pl.savefig( plotName)
                 pl.close(fig)
@@ -598,7 +706,8 @@ for posSat, velSat in zip( posSamples, velSamples) :
                 fig = pl.figure()
                 ax = fig.add_subplot(111)
                 ax.set_aspect('equal')
-                ax.scatter( xDisk[::10], yDisk[::10], s=1)
+                cutArray = cut(xDisk, yDisk)
+                ax.scatter( xDisk[cutArray][::10], yDisk[cutArray][::10], s=1)
                 ax.scatter( xSat, ySat, s=10, color="red")
                 pl.xlabel( "x [kpc]", fontsize=20)
                 pl.ylabel( "y [kpc]", fontsize=20)
@@ -629,15 +738,17 @@ for posSat, velSat in zip( posSamples, velSamples) :
     end = timer()
     if rank == 0 :
        print("time of calculation {0:.2f}s".format(end - start)) # Time in seconds, e.g. 5.38091952400282
-    if rank == 0 :
-       import matplotlib.pyplot as pl
-       pl.clf()
-       pl.scatter( rperiArray, ateffArray, s=4)
-       pl.xlim(0.,70.)
-       pl.ylim(0.,0.35)
-       pl.xlabel( r"$r_{p}$", fontsize=20)
-       pl.ylabel( r"$a_{t,eff}$", fontsize=20)
-       pl.xticks(fontsize=18)
-       pl.yticks(fontsize=18)
-       pl.tight_layout()
-       pl.savefig("ateff.pdf")
+if rank == 0 :
+    import matplotlib.pyplot as pl
+    np.savetxt( "ateff.data", zip(rperiArray, ateffArray))
+    pl.clf()
+    pl.scatter( rperiArray, ateffArray, s=4)
+    pl.xlim(0.,70.)
+    pl.ylim(0.,0.35)
+    pl.xlabel( r"$r_{p}$", fontsize=20)
+    pl.ylabel( r"$a_{t,eff}$", fontsize=20)
+    pl.xticks(fontsize=18)
+    pl.yticks(fontsize=18)
+    pl.tight_layout()
+    pl.savefig("ateff.pdf")
+
