@@ -15,6 +15,19 @@ def cut( xDisk, yDisk, rin=8, cutAngle = 15) :
     cutArray = np.logical_and( r > rin, np.logical_and( np.abs(thetaCut1 - np.pi) > cut,np.abs(thetaCut2 ) > cut))
     return cutArray
 
+def filterAngle( angle) :
+    twopi = 2.*math.pi
+    for i in range(angle.size - 1) :
+        curAngle = angle[i]
+        nextAngle = angle[i+1]
+        dangle = abs(nextAngle-curAngle)
+        if( abs( nextAngle + twopi - curAngle) < dangle ) : 
+            angle[i+1:] += twopi
+        elif( abs( nextAngle - twopi - curAngle) < dangle ) : 
+            angle[i+1:] -= twopi
+    return angle 
+
+
 phi = np.loadtxt("phigrid.txt")
 r = np.loadtxt( "rgrid.txt")
 sigma = np.loadtxt( "sigma.txt",delimiter=',')
@@ -56,3 +69,15 @@ print( "Old Definition of ateff = {0:.3e}, for m=1,3 modes ateff = {1:.3e}".form
 pl.legend(loc="best")
 pl.savefig( "ateff_data.pdf")
 
+angle = np.angle(fft[:,1])#+np.pi
+angle[angle < 0] += 2.*np.pi
+angle = filterAngle( angle)
+
+boolArray = np.logical_and( r < 25., r > 20.)
+p = np.polyfit( r[boolArray], angle[boolArray], 1)
+print("slope = {0} phi_offset = {1}".format( p[0], p[1]))
+
+pl.clf()
+pl.plot( r, angle/math.pi*180)
+#pl.ylim(0,360)
+pl.savefig( "phase_data.pdf")
