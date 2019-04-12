@@ -224,10 +224,14 @@ def getICsmusample(nn=10):
     vz = np.empty(nn)
     positions = []
     velocities = []
+    numSamples = 0
     for pm_ra_cosdec, pm_dec in zip( spmracosdec, spmdec):
         pos, vel = getICs(pm_ra_cosdec=pm_ra_cosdec,pm_dec=pm_dec)
         positions.append( pos)
         velocities.append( vel)
+        numSamples += 1
+        if( numSamples % 100 == 0 and rank == 0) : 
+            print("NumSamples = {0}".format(numSamples))
 
     return positions,velocities
 
@@ -443,7 +447,7 @@ def cut( xDisk, yDisk, rin=8) :
     thetaCut2 = np.arctan2(yDisk, xDisk-x0[1])
     thetaCut1[thetaCut1 < 0] += 2.*math.pi
     #thetaCut2[thetaCut2 < 0] += 2.*math.pi
-    cut = 15./360.*2.*math.pi
+    cut = 0.#15./360.*2.*math.pi
     cutArray = np.logical_and( r > rin, np.logical_and( np.abs(thetaCut1 - np.pi) > cut,np.abs(thetaCut2 ) > cut))
     return cutArray
 
@@ -490,6 +494,19 @@ def phaseSpace( posDisk, velDisk, rOrig, LOrig, center, radius) :
     deltaVz = np.array(deltaVz)
     return deltaR, deltaVr, deltaZ, deltaVz, deltaL
 
+def filterAngle( angle) :
+    twopi = 2.*math.pi
+    for i in range(angle.size - 1) :
+        curAngle = angle[i]
+        nextAngle = angle[i+1]
+        dangle = abs(nextAngle-curAngle)
+        if( abs( nextAngle + twopi - curAngle) < dangle ) : 
+            angle[i+1:] += twopi
+        elif( abs( nextAngle - twopi - curAngle) < dangle ) : 
+            angle[i+1:] -= twopi
+    return angle 
+
+
 rp = kpc*np.arange( 10., 50., 1.)
 m, rho, sigma = hernquistmass( rp)
 rhoMean = m/(4.*math.pi/3.*rp**3)
@@ -501,7 +518,7 @@ velSamples = None
 if( not (args.run_test or args.run_phase)) : 
    if( rank == 0) :
       print("Getting samples")
-   posSamples, velSamples = getICsmusample( nn = 500)
+   posSamples, velSamples = getICsmusample( nn = 10000)
    if( rank == 0) :
       print("finished samples")
 
@@ -511,6 +528,8 @@ if( args.run_test or args.run_phase) :
 #vdist = getVelSamples()
 rperiArray = []
 ateffArray = []
+dphidrArray = []
+avgphiArray = []
 for posSat, velSat in zip( posSamples, velSamples) : 
     from timeit import default_timer as timer
     start = timer()
@@ -539,7 +558,7 @@ for posSat, velSat in zip( posSamples, velSamples) :
             t = data[0]
             rperi = data[1]
 
-        if( rperi > 40.) :
+        if( rperi > 12.5) :
             if( rank == 0) :
                 print("skipping rperi={0:.2f}".format(rperi))
             continue
@@ -695,7 +714,15 @@ for posSat, velSat in zip( posSamples, velSamples) :
                 pl.clf()
                 fig = pl.figure()
                 ax = fig.add_subplot(111)
-                ax.plot( r, np.angle(fft[:,1])+np.pi, lw=2)
+                angle = np.angle(fft[:,1])+np.pi
+                angle = filterAngle( angle)
+		boolArray = np.logical_and( r < 25., r > 20.)
+                p = np.polyfit( r[boolArray], angle[boolArray], 1)
+		
+                dphidrArray.append( p[0])	
+                avgphiArray.append( p[1])
+		print p[0], p[1]
+                ax.plot( r, angle, lw=2)
                 ax.set_xlim(10,25)
                 plotName = "phase_frame{0}".format(endSuffix)
                 print( "making plot: {0}".format(plotName))
@@ -740,7 +767,7 @@ for posSat, velSat in zip( posSamples, velSamples) :
        print("time of calculation {0:.2f}s".format(end - start)) # Time in seconds, e.g. 5.38091952400282
 if rank == 0 :
     import matplotlib.pyplot as pl
-    np.savetxt( "ateff.data", zip(rperiArray, ateffArray))
+    np.savetxt( "ateff.data", zip(rperiArray, ateffArray, dphidrArray, avgphiArray))
     pl.clf()
     pl.scatter( rperiArray, ateffArray, s=4)
     pl.xlim(0.,70.)
