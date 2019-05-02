@@ -131,12 +131,16 @@ def getICsmusample(nn=10):
     vz = np.empty(nn)
     positions = []
     velocities = []
+    pm_raArray = []
+    pm_decArray = []
     for pm_ra_cosdec, pm_dec in zip( spmracosdec, spmdec):
         pos, vel = getICs(pm_ra_cosdec=pm_ra_cosdec,pm_dec=pm_dec)
         positions.append( pos)
         velocities.append( vel)
+        pm_raArray.append( pm_ra_cosdec)
+        pm_decArray.append( pm_dec)
 
-    return positions,velocities
+    return positions,velocities, pm_raArray, pm_decArray
 
 def NFWmass( r) : 
     scalelength = Rvir/cvir
@@ -170,7 +174,7 @@ def NFWmass( r) :
     return m,rho,sigma
 
 def hernquistmass( r, m0 = None, r200=220*kpc, vc200=2.2e7, c0=9.39) : 
-    if( isNone(m0)) :
+    if( m0 is None) :
         m200 = (vc200*vc200)/G*r200
         rs = r200/c0
         a = rs*math.sqrt(2.*(math.log(1.+c0) - c0/(1.+c0)))
@@ -256,13 +260,17 @@ vKick = np.sqrt(G*rhoMean)*rscale
 #pl.savefig("test.pdf") 
 #print "rho = {0} {1} {2}".format(m/msun/(4.*math.pi/3.*(r/pc)**3), rho*pc**3/msun, m/msun/1e10)
 posSingle, velSingle = getICs()
-posSamples, velSamples = getICsmusample( nn = 50)
+posSamples, velSamples, pm_raSamples, pm_decSamples = getICsmusample( nn = 5)
 #vdist = getVelSamples()
 
 if( not args.forward) : 
      tEnd = -tEnd
 
-for pos, vel in zip( posSamples, velSamples) : 
+lowPeriPmRa = []
+lowPeriPmDec = []
+lowPerirPeri = []
+
+for pos, vel, pm_ra, pm_dec in zip( posSamples, velSamples, pm_raSamples, pm_decSamples) : 
      #print ("pos,vel")
      #print (pos, vel)
      print( "Initial positions: {0} and velocities: {1}".format(pos/kpc, vel/vkms))
@@ -299,9 +307,13 @@ for pos, vel in zip( posSamples, velSamples) :
          rArray.append(r[0]/kpc)
 
      minr = np.array(rArray).argmin()
+     rperi = rArray[minr]
      print ("r_peri = {0} at t = {1}".format( rArray[minr], tArray[minr]))
      print ("rdisk = {0} zdisk = {1}".format( np.sqrt(np.array(rArray)**2 - np.array(zArr)**2)[minr], zArr[minr]))
-
+     if( rperi < 15.0) : 
+         lowPeriPmRa.append(pm_ra)
+         lowPeriPmDec.append( pm_dec)
+         lowPerirPeri.append( rperi)
      if( args.show_plot) : 
          pl.plot( tArray, rArray)
          pl.plot(time, gr,'r')
@@ -321,3 +333,5 @@ for pos, vel in zip( posSamples, velSamples) :
          pl.ylabel( "z [kpc]")
 
          pl.savefig("z.pdf")
+
+np.savetxt("lowPeri.txt", zip(lowPerirPeri,lowPeriPmRa, lowPeriPmDec))
