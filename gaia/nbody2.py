@@ -316,7 +316,7 @@ for pos, vel, pm_ra, pm_dec in zip( posSamples, velSamples, pm_raSamples, pm_dec
          lowPerirPeri.append( rperi)
      if( args.show_plot) : 
          pl.plot( tArray, rArray)
-         pl.plot(time, gr,'r')
+         #pl.plot(time, gr,'r')
          pl.xlabel( "t [Gyrs]")
          pl.ylabel( "r [kpc]")
 
