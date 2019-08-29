@@ -52,7 +52,7 @@ Rvir = 299.*kpc
 
 msat = 1e10*msun
 
-tEnd = 5.0*Gyrs
+tEnd = 1.0*Gyrs
 
 if args.use_K13 :
     # K13 values
@@ -173,7 +173,7 @@ def NFWmass( r) :
 
     return m,rho,sigma
 
-def hernquistmass( r, m0 = None, r200=220*kpc, vc200=2.2e7, c0=9.39) : 
+def hernquistmass( r, m0 = None, r200=200*kpc, vc200=2.0e7, c0=9.39) : 
     if( m0 is None) :
         m200 = (vc200*vc200)/G*r200
         rs = r200/c0
@@ -260,15 +260,26 @@ vKick = np.sqrt(G*rhoMean)*rscale
 #pl.savefig("test.pdf") 
 #print "rho = {0} {1} {2}".format(m/msun/(4.*math.pi/3.*(r/pc)**3), rho*pc**3/msun, m/msun/1e10)
 posSingle, velSingle = getICs()
-posSamples, velSamples, pm_raSamples, pm_decSamples = getICsmusample( nn = 5)
+posSamples, velSamples, pm_raSamples, pm_decSamples = getICsmusample( nn = 10)
 #vdist = getVelSamples()
 
 if( not args.forward) : 
      tEnd = -tEnd
 
+f = open("datarpdistvc200t1Gyr.txt", "w")
+g = open("dataICsvc200t1Gyr.txt","w")
+#h = open("datartvc200t1Gyr.txt","w")
+rtfilename = "datartvc200t1Gyr.txt"
+
+lowestrPeri = 1e6
+lowestrPeriR = None
+lowertrPeriT = None
+
 lowPeriPmRa = []
 lowPeriPmDec = []
 lowPerirPeri = []
+
+#f = open("pmlowrpMW.txt","w")
 
 for pos, vel, pm_ra, pm_dec in zip( posSamples, velSamples, pm_raSamples, pm_decSamples) : 
      #print ("pos,vel")
@@ -286,6 +297,9 @@ for pos, vel, pm_ra, pm_dec in zip( posSamples, velSamples, pm_raSamples, pm_dec
      xArr = []
      yArr = []
      zArr = []
+     vxArr = []
+     vyArr = []
+     vzArr = []
 
      while integral.successful() and ((not args.forward and tEnd < t) or (args.forward and t<tEnd)) :
          dt = 0.
@@ -303,24 +317,37 @@ for pos, vel, pm_ra, pm_dec in zip( posSamples, velSamples, pm_raSamples, pm_dec
          xArr.append(pos[0,0]/kpc)
          yArr.append(pos[0,1]/kpc)
          zArr.append(pos[0,2]/kpc)
+         vxArr.append(vel[0,0]/vkms)
+         vyArr.append(vel[0,1]/vkms)
+         vzArr.append(vel[0,2]/vkms)
          tArray.append(t/Gyrs)
          rArray.append(r[0]/kpc)
-
+         
      minr = np.array(rArray).argmin()
      rperi = rArray[minr]
      print ("r_peri = {0} at t = {1}".format( rArray[minr], tArray[minr]))
      print ("rdisk = {0} zdisk = {1}".format( np.sqrt(np.array(rArray)**2 - np.array(zArr)**2)[minr], zArr[minr]))
+
+     f.write(str(rArray[minr])+ " " + str(tArray[minr]) +"\n" )
+     g.write(str(xArr[-1]) + " " + str(yArr[-1]) + " " + str(zArr[-1]) + " " + str(vxArr[-1]) + " " + str(vyArr[-1]) + " " + str(vzArr[-1]) + " " + str(rArray[minr]) + " " + str(tArray[minr])+ " " + str(zArr[minr]) + "\n")
+
      if( rperi < 15.0) : 
          lowPeriPmRa.append(pm_ra)
          lowPeriPmDec.append( pm_dec)
          lowPerirPeri.append( rperi)
-     if( args.show_plot) : 
+     if( rperi < lowestrPeri ) :
+         lowestrPeriR = rArray
+         lowestrPeriT = tArray
+
+     if( args.show_plot) :
+         pl.clf()
          pl.plot( tArray, rArray)
          #pl.plot(time, gr,'r')
          pl.xlabel( "t [Gyrs]")
          pl.ylabel( "r [kpc]")
 
          pl.savefig("r.pdf")
+         # h.write(str(rArray[minr])+ " " + str(tArray[minr]) + "\n" )
          pl.clf()
          pl.plot( xArr, yArr)
          pl.xlabel( "x [kpc]")
@@ -334,4 +361,9 @@ for pos, vel, pm_ra, pm_dec in zip( posSamples, velSamples, pm_raSamples, pm_dec
 
          pl.savefig("z.pdf")
 
-np.savetxt("lowPeri.txt", zip(lowPerirPeri,lowPeriPmRa, lowPeriPmDec))
+#np.savetxt("lowPeriv220.txt",list(zip(lowPerirPeri,lowPeriPmRa, lowPeriPmDec)))
+
+np.savetxt( rtfilename, list(zip( lowestrPeriR, lowestrPeriT)))
+f.close()
+g.close()
+#h.close()
