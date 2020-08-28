@@ -17,6 +17,8 @@ thin = 200
 discard = 5000
 unique_name = True
 
+TINY_GR = 1e-20
+
 excluded_pulsars = None
 nanograv = [0,1,2,3]
 ppta = [4,5,6,7,8,9]
@@ -173,9 +175,11 @@ def initialize_theta( frac_random=1) :
     number_pulsars = pulsar_data["number pulsars"]
     distances = pulsar_data["distance"]
     distance_err = pulsar_data["distance error"]
+    alos_gr = pulsar_data["alos_gr"]
+    alos_gr_err = pulsar_data["alos_gr_err"]
     mus = pulsar_data["mu"]
     mu_err = pulsar_data["mu error"]
-    theta = np.zeros(number_parameters+2*number_pulsars)
+    theta = np.zeros(number_parameters+3*number_pulsars)
     if MODEL == QUILLEN : 
         lgalpha1 = lgalpha1_0 + 0.1*np.random.randn(1)[0]*frac_random
         lgalpha2 = lgalpha2_0 - 0.1*np.random.randn(1)[0]*frac_random
@@ -191,7 +195,9 @@ def initialize_theta( frac_random=1) :
     if(number_parameters > 2) :
         theta[2] = Vlsr0 + Vlsr_err*np.random.randn(1)[0]*frac_random
     theta[number_parameters:number_pulsars+number_parameters] = distances + distance_err*np.random.randn(number_pulsars)*frac_random
-    theta[number_pulsars+number_parameters:] = mus + mu_err*np.random.randn(number_pulsars)*frac_random
+    theta[number_pulsars+number_parameters:2*number_pulsars+number_parameters] = mus + mu_err*np.random.randn(number_pulsars)*frac_random
+    theta[2*number_pulsars+number_parameters:] = alos_gr + alos_gr_err*np.random.randn(number_pulsars)*frac_random
+
     return theta
 
 def unpack_theta( theta, number_pulsars) :
@@ -206,16 +212,16 @@ def unpack_theta( theta, number_pulsars) :
     if( number_parameters > 2) : 
         Vlsr = theta[2]
     distances = theta[number_parameters:number_pulsars+number_parameters]
-    mus = theta[number_parameters+number_pulsars:]
-    return parameter1, parameter2, Vlsr, distances, mus
+    mus = theta[number_parameters+number_pulsars:number_parameters+2*number_pulsars]
+    alos_gr = theta[number_parameters+2*number_pulsars:]
+    return parameter1, parameter2, Vlsr, distances, mus, alos_gr
 
 def model_and_data( theta) : 
     global pulsar_data
     number_pulsars = pulsar_data["number pulsars"]
-    lgalpha1, lgalpha2, Vlsr, distances, mus = unpack_theta(theta, number_pulsars)
+    lgalpha1, lgalpha2, Vlsr, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
     b = pulsar_data["latitude"]
     l = pulsar_data["longitude"]
-    alos_gr = pulsar_data["alos_gr"]
     alos_model = alos_from_pulsar( distances, b, l, mus, alos_gr, lgalpha1, lgalpha2, Vlsr)
     alos_obs = pulsar_data["alos"]
     alos_err = pulsar_data["alos error"]
@@ -235,12 +241,15 @@ def log_likelihood( theta, return_chisq = False) :
 def log_prior( theta) :
     global pulsar_data 
     number_pulsars = pulsar_data["number pulsars"]
-    p1, p2, Vlsr, distances, mus = unpack_theta(theta, number_pulsars)
+    p1, p2, Vlsr, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
 
     distance_err = pulsar_data["distance error"]
     mu_err = pulsar_data["mu error"]
     distance_arr = pulsar_data["distance"]
     mu_arr = pulsar_data["mu"]
+    alos_err = pulsar_data["alos error"]
+    alos_gr_err = pulsar_data["alos_gr_err"]
+    alos_gr_arr = pulsar_data["alos_gr"]
 
     # define the range in alpha1, alpha2
     lp = 0
@@ -260,6 +269,8 @@ def log_prior( theta) :
     #lp += -0.5*(((Vlsr - Vlsr0)/Vlsr_err)**2 + math.log(2*math.pi*Vlsr_err**2))
     lp += 0.5*np.sum(-((distances-distance_arr)/distance_err)**2)# - np.log(2*np.pi*distance_err**2))
     lp += 0.5*np.sum(- ((mus-mu_arr)/mu_err)**2)# - np.log(2*np.pi*mu_err**2))
+    lp += 0.5*np.sum(- ((alos_gr-alos_gr_arr)/alos_gr_err)**2)# - np.log(2*np.pi*mu_err**2))
+
     return lp
 
 def log_probability(theta) :
@@ -319,11 +330,10 @@ def read_pulsar_data() :
         if(pulsar_no in use_other_distance) : 
             d, derr = string_to_value_and_error(distance_str)
 
-        pbdot_gr = 0
-        pbdot_gr_err = 0
-
-        if(name in gr_names) : 
-            pbdot_gr_str = gr_pbdot[gr_names == name]
+        pbdot_gr = TINY_GR
+        pbdot_gr_err = TINY_GR
+        if(name in gr_names.values) : 
+            pbdot_gr_str = gr_pbdot.values[gr_names.values == name][0]
             pbdot_gr, pbdot_gr_err = string_to_value_and_error( pbdot_gr_str, has_exponent=True)
 
         mu, muerr = string_to_value_and_error( mu_str)
@@ -433,8 +443,8 @@ def make_corner_plot(flat_samples) :
     print(alos_err)
     pl.clf()
 
-    pl.errorbar(range(alos_obs.size),alos_obs, yerr=alos_err, fmt=".",alpha=0.5,label=r"$a_{\rm los, obs}$")
-    pl.scatter(range(alos_model.size), alos_model, c='red', s=2, alpha=1,label=r"$a_{\rm los, mod}$")
+    pl.errorbar(range(alos_obs.size),np.abs(alos_obs), yerr=alos_err, fmt=".",alpha=0.5,label=r"$a_{\rm los, obs}$")
+    pl.scatter(range(alos_model.size),np.abs(alos_model), c='red', s=2, alpha=1,label=r"$a_{\rm los, mod}$")
 
     # inds = np.random.randint(len(flat_samples), size=1000)
 
@@ -445,6 +455,7 @@ def make_corner_plot(flat_samples) :
 
     names = np.array(pulsar_data["name"])
     pl.ylim(3e-10,1e-6)
+    pl.ylabel(r"$|a_{\rm los,obs}|\,[{\rm cm\,s}^{-2}]$")
     pl.xticks(range(alos_model.size), labels=names, rotation="vertical")
     pl.yscale('log')
     pl.legend(loc="best")
