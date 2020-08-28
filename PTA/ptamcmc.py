@@ -379,7 +379,7 @@ def run_mcmc() :
     #    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, pool=pool)
     backend = None
     if( not filename is None) : 
-        if os.path.exist(filename):
+        if os.path.exists(filename):
             os.remove(filename)
 
         backend = emcee.backends.HDFBackend(filename)
