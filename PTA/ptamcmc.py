@@ -9,15 +9,27 @@ import scipy as sp
 import math
 import emcee
 import os
+import astropy.coordinates as coord
+import astropy.units as u
+import galpy.potential as gp
+from galpy.potential import MWPotential2014
+from galpy.potential import evaluatePotentials
+from galpy.potential import evaluateRforces
+from galpy.potential import evaluatezforces
+from galpy.util import bovy_conversion
+from galpy.potential import DehnenBarPotential
+from galpy.potential import HernquistPotential
 
 filename = "mcmc.h5" #default file, override with -o
 
-iterations = 20000
+
+iterations = 10000
 thin = 200
-discard = 5000
+discard = 500
 unique_name = True
 
 TINY_GR = 1e-20
+multithread = False
 
 excluded_pulsars = None
 nanograv = [0,1,2,3]
@@ -35,14 +47,21 @@ pulsar_data = None
 QUILLEN = 0
 EXPONENTIAL = 1
 GAUSSIAN = 2
+MWpot = 3
+Hernquist = 4
+
 number_parameters = 1 # number of parameters for the galactic model
 
-MODEL = QUILLEN
+MODEL = Hernquist
 
 if MODEL == QUILLEN : 
     number_parameters = 1
 elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN :
     number_parameters = 2
+elif MODEL == MWpot :
+    number_parameters = 0
+elif MODEL == Hernquist: 
+    number_parameters = 0
 
 ## location of Sun -
 rsun= 8.122 ## in kpc
@@ -84,6 +103,24 @@ Vlsr0 = Vlsr_quillen#
 Vlsr0 = 255.2*1e5
 Vlsr_err = 5.1*1e5
 G = 6.67e-8
+
+def accHernquist(x,y,z):
+    r = np.sqrt( x**2 + y**2)
+    pot = HernquistPotential(2.e12*u.M_sun , 30e3*u.pc)
+    az = evaluatezforces(pot,r*u.kpc , z*u.kpc)
+    ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)
+    ax = -ar*x/r
+    ay = -ar*y/r
+    return ax,ay,az
+
+def accMWpot(x,y,z):
+    r = np.sqrt( x**2 + y**2)
+    pot = MWPotential2014
+    az = evaluatezforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(220.,rsun)
+    ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(220.,rsun)
+    ax = -ar*x/r
+    ay = -ar*y/r
+    return ax,ay,az
 
 def acc_gauss(x,y,z,rho0,z0, Vlsr) : 
     r = np.sqrt(x*x + y*y) 
@@ -135,6 +172,12 @@ def alos(x,y,z,parameter1,parameter2, Vlsr):
         z0 = 1e1**lgz0
         axsun, aysun, azsun = acc_gauss(xsun,ysun,zsun, rho0, z0, Vlsr)
         ax, ay, az = acc_gauss(x,y,z,rho0,z0, Vlsr)
+    elif MODEL == MWpot:
+        axsun,aysun,azsun = accMWpot(x,y,z)
+        ax,ay,az = accMWpot(x,y,z)
+    elif MODEL == Hernquist:
+        axsun,aysun,azsun = accHernquist(x,y,z)
+        ax,ay,az = accHernquist(x,y,z)
 
     dx, dy, dz = x-xsun, y-ysun, z-zsun
     dr = np.sqrt(dx*dx+dy*dy+dz*dz)
@@ -385,8 +428,6 @@ def run_mcmc() :
 
     import multiprocessing
 
-    #with multiprocessing.Pool(1) as pool : 
-    #    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, pool=pool)
     backend = None
     if( not filename is None) : 
         if os.path.exists(filename):
@@ -395,8 +436,15 @@ def run_mcmc() :
         backend = emcee.backends.HDFBackend(filename)
         backend.reset(nwalkers, ndim)
 
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, backend=backend)
-    sampler.run_mcmc(pos, iterations, progress=True)
+    sampler = None
+    if multithread : 
+        with multiprocessing.Pool(4) as pool : 
+            sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, backend=backend, pool=pool)
+            sampler.run_mcmc(pos, iterations, progress=True)
+    else :
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, backend=backend)
+        sampler.run_mcmc(pos, iterations, progress=True)
+
     flat_samples = sampler.get_chain(discard=discard, thin=thin, flat=True)
 
     return flat_samples 
@@ -415,24 +463,26 @@ def make_corner_plot(flat_samples) :
     itheta = initialize_theta( frac_random=0.)
 
     best_fit_theta = np.zeros(itheta.size)
-    for i in range(best_fit_theta.size) : 
-        mcmc = np.percentile(flat_samples[:, i], [50])
-        best_fit_theta[i] = mcmc[0]
 
-    pl.clf()
-    labels = [r"$\log(\alpha_1)$",r"$\log(-\alpha_2)$", r"$V_{\rm lsr}$"]
-    if MODEL == EXPONENTIAL or MODEL == GAUSSIAN : 
-        labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
-        flat_samples[:,0] -= math.log10(2e33/pc**3)
-        flat_samples[:,1] -= math.log10(pc)
-    fig = corner.corner( flat_samples[:,0:number_parameters], labels=labels[0:number_parameters],truths=best_fit_theta[0:number_parameters])
-    pl.savefig("corner.pdf")
+    if number_parameters > 0 : 
+        for i in range(best_fit_theta.size) : 
+            mcmc = np.percentile(flat_samples[:, i], [50])
+            best_fit_theta[i] = mcmc[0]
 
-    for i in range(number_parameters):
-        mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
-        q = np.diff(mcmc)
-        txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
-        print( "{0} = {1} {2} {3}".format(labels[i], mcmc[1], q[0], q[1]))
+        pl.clf()
+        labels = [r"$\log(\alpha_1)$",r"$\log(-\alpha_2)$", r"$V_{\rm lsr}$"]
+        if MODEL == EXPONENTIAL or MODEL == GAUSSIAN : 
+            labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
+            flat_samples[:,0] -= math.log10(2e33/pc**3)
+            flat_samples[:,1] -= math.log10(pc)
+        fig = corner.corner( flat_samples[:,0:number_parameters], labels=labels[0:number_parameters],truths=best_fit_theta[0:number_parameters])
+        pl.savefig("corner.pdf")
+
+        for i in range(number_parameters):
+            mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
+            q = np.diff(mcmc)
+            txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
+            print( "{0} = {1} {2} {3}".format(labels[i], mcmc[1], q[0], q[1]))
 
 
     print("best fit chisq = ", log_likelihood( best_fit_theta, return_chisq =True))
@@ -442,9 +492,14 @@ def make_corner_plot(flat_samples) :
     print(alos_obs)
     print(alos_err)
     pl.clf()
+    d = best_fit_theta[number_parameters:number_parameters+len(alos_model)]
+    b = pulsar_data["latitude"]
 
-    pl.errorbar(range(alos_obs.size),np.abs(alos_obs), yerr=alos_err, fmt=".",alpha=0.5,label=r"$a_{\rm los, obs}$")
-    pl.scatter(range(alos_model.size),np.abs(alos_model), c='red', s=2, alpha=1,label=r"$a_{\rm los, mod}$")
+    z = d * np.sin(b*np.pi/180.)  + zsun/kpctocm
+    x = z
+    x = range(alos_obs.size)
+    pl.errorbar(x,alos_obs, yerr=alos_err, fmt=".",alpha=0.5,label=r"$a_{\rm los, obs}$")
+    pl.scatter(x,alos_model, c='red', s=2, alpha=1,label=r"$a_{\rm los, mod}$")
 
     # inds = np.random.randint(len(flat_samples), size=1000)
 
@@ -454,10 +509,11 @@ def make_corner_plot(flat_samples) :
     #     pl.scatter(range(alos_model.size), alos_model, c='red', s=2, alpha=0.5)
 
     names = np.array(pulsar_data["name"])
-    pl.ylim(3e-10,1e-6)
+    #pl.ylim(3e-10,1e-6)
     pl.ylabel(r"$|a_{\rm los,obs}|\,[{\rm cm\,s}^{-2}]$")
     pl.xticks(range(alos_model.size), labels=names, rotation="vertical")
-    pl.yscale('log')
+    #pl.yscale('log')
+    #pl.xscale('log')
     pl.legend(loc="best")
     pl.savefig("test.pdf")
 
@@ -467,10 +523,16 @@ parser.add_argument('-o', help="hdf5 file to store/load mcmc chain")
 parser.add_argument('--load_previous', action='store_true',
                     default=False,
                     help="load MCMC from file")
+parser.add_argument('--multi', action='store_true',
+                    default=False,
+                    help="use multiprocessing")
+
 args = parser.parse_args()
 
 if not args.o is None :
     filename = args.o
+
+multithread = args.multi
 
 read_pulsar_data()
 flat_samples = None
