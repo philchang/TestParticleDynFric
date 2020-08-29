@@ -23,9 +23,9 @@ from galpy.potential import HernquistPotential
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 10000
+iterations = 20000
 thin = 200
-discard = 500
+discard = 5000
 unique_name = True
 
 TINY_GR = 1e-20
@@ -48,11 +48,12 @@ QUILLEN = 0
 EXPONENTIAL = 1
 GAUSSIAN = 2
 MWpot = 3
-Hernquist = 4
+Hernquistfix = 4
+HERNQUIST = 5
 
-number_parameters = 1 # number of parameters for the galactic model
+number_parameters = 2 # number of parameters for the galactic model
 
-MODEL = Hernquist
+MODEL = MWpot
 
 if MODEL == QUILLEN : 
     number_parameters = 1
@@ -60,8 +61,10 @@ elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN :
     number_parameters = 2
 elif MODEL == MWpot :
     number_parameters = 0
-elif MODEL == Hernquist: 
+elif MODEL == Hernquistfix: 
     number_parameters = 0
+elif MODEL == HERNQUIST:
+    number_parameters = 2
 
 ## location of Sun -
 rsun= 8.122 ## in kpc
@@ -70,9 +73,10 @@ ysun = 0.
 zsun = 0.0055  ## in kpc from Quillen et al. 2020
 kpctocm = 3.086e21 ## convert pc to cm
 pc = kpctocm*1e-3
+Msun = 1.989e33   ## in g
 
 day_to_sec = 24*3600
-c = 3e10
+c = 3e10  ## in cm 
 
 #Quillen model constants
 alpha1_0 = 4e-30
@@ -90,6 +94,11 @@ lgrho_midplane = math.log10(rho_midplane)
 scale_height = 0.1*kpctocm # 500 pc
 lgscale_height = math.log10(scale_height)
 
+## Hernquist model 
+Mh_0 = 1.e12*Msun ## in g 
+a_0 = 30.*kpctocm  ## in cm
+lgMh_0 = math.log10(Mh_0)
+lga_0 = math.log10(a_0)
 
 xsun *= kpctocm
 ysun *= kpctocm
@@ -104,20 +113,35 @@ Vlsr0 = 255.2*1e5
 Vlsr_err = 5.1*1e5
 G = 6.67e-8
 
-def accHernquist(x,y,z):
+def accHernquistfix(x,y,z):
+    x = x/kpctocm
+    y = y/kpctocm
+    z = z/kpctocm
     r = np.sqrt( x**2 + y**2)
     pot = HernquistPotential(2.e12*u.M_sun , 30e3*u.pc)
     az = evaluatezforces(pot,r*u.kpc , z*u.kpc)
     ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)
+    az = -az*1.e5/(1.e6*3.15e7)
+    ar = ar*1.e5/(1.e6*3.15e7)
+    #ar2 = 255e5**2/(r*kpctocm)
+    #print(x,y,z)
+    #print("ar = ", ar/ar2,az/ar2)
     ax = -ar*x/r
     ay = -ar*y/r
     return ax,ay,az
 
 def accMWpot(x,y,z):
+    x = x/kpctocm
+    y = y/kpctocm
+    z = z/kpctocm
     r = np.sqrt( x**2 + y**2)
     pot = MWPotential2014
-    az = evaluatezforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(220.,rsun)
-    ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(220.,rsun)
+    az = evaluatezforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(220.,8.122)
+    ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(220.,8.122)
+    ar = ar*1.e5/(1.e6*3.15e7)
+    az = -az*1.e5/(1.e6*3.15e7)
+    ar = 255e5**2/(r*kpctocm)
+
     ax = -ar*x/r
     ay = -ar*y/r
     return ax,ay,az
@@ -148,7 +172,16 @@ def acc_quillen(x,y,z,lgalpha1, lgalpha2, Vlsr) :
     ar = Vlsr*Vlsr/r
     ax = -ar*x/r
     ay = -ar*y/r
+    return ax,ay,az
 
+def accHernquist(x,y,z,lgMh,lga):
+    r = np.sqrt(x**2 + y**2 + z**2)
+    Mh = 1e1**lgMh
+    a = 1e1**lga
+    ar = (G*Mh)/((r+a)**2)
+    az = -((G*Mh)*(z/r))/((r+a)**2)
+    ax = -ar*x/r
+    ay = -ar*y/r
     return ax,ay,az
 
 ## define acceleration components to fit the data, from Quillen et al. 2020:
@@ -174,15 +207,21 @@ def alos(x,y,z,parameter1,parameter2, Vlsr):
         ax, ay, az = acc_gauss(x,y,z,rho0,z0, Vlsr)
     elif MODEL == MWpot:
         axsun,aysun,azsun = accMWpot(x,y,z)
-        ax,ay,az = accMWpot(x,y,z)
-    elif MODEL == Hernquist:
-        axsun,aysun,azsun = accHernquist(x,y,z)
-        ax,ay,az = accHernquist(x,y,z)
+        ax,ay,az = accMWpot(xsun,ysun,zsun)
+    elif MODEL == Hernquistfix:
+        axsun,aysun,azsun = accHernquistfix(x,y,z)
+        ax,ay,az = accHernquistfix(xsun,ysun,zsun)
+    elif MODEL == HERNQUIST:
+        lgMh, lga = parameter1, parameter2
+        Mh = 1e1**lgMh
+        a = 1e1**lga
+        axsun,aysun,azsun = accHernquist(x,y,z,lgMh,lga)
+        ax,ay,az = accHernquist(xsun,ysun,zsun,lgMh,lga)
 
     dx, dy, dz = x-xsun, y-ysun, z-zsun
     dr = np.sqrt(dx*dx+dy*dy+dz*dz)
 
-    return ((ax-axsun)*dx + (ay-aysun)*dy + (az-azsun)*dz)/dr
+    return ((ax-axsun)*dx + (ay-aysun)*dy + (az-azsun)*dz)/(np.maximum(dr,1.e-10))
 
 def alos_from_pulsar(d, b, l, mus, alos_gr, lgalpha1, lgalpha2, Vlsr) : 
     ## pulsar positions --
@@ -234,6 +273,11 @@ def initialize_theta( frac_random=1) :
         lgz0 = lgscale_height + 0.1*np.random.randn(1)[0]*frac_random
         theta[0] = lgrho0
         theta[1] = lgz0
+    elif MODEL == HERNQUIST :
+        lgMh = lgMh_0 + 0.1*np.random.randn(1)[0]*frac_random 
+        lga = lga_0 + 0.01*np.random.randn(1)[0]*frac_random
+        theta[0] = lgMh
+        theta[1] = lga
 
     if(number_parameters > 2) :
         theta[2] = Vlsr0 + Vlsr_err*np.random.randn(1)[0]*frac_random
@@ -244,9 +288,11 @@ def initialize_theta( frac_random=1) :
     return theta
 
 def unpack_theta( theta, number_pulsars) :
-    parameter1 = theta[0]
+    parameter1 = -np.inf
+    if( number_parameters > 0) :
+        parameter1 = theta[0]
+    
     parameter2 = -np.inf
-
     if( number_parameters > 1) :
         parameter2 = theta[1]
 
@@ -307,6 +353,13 @@ def log_prior( theta) :
         if( np.abs(lgrho0 - lgrho_midplane) > p1_range)  :
             return -np.inf
         if(number_parameters > 1 and np.abs(lgz0 - lgscale_height) > p2_range) :
+            return -np.inf
+    elif MODEL == HERNQUIST:
+        lgMh, lga = p1,p2
+        if (np.abs(lgMh - lgMh_0) > p1_range) :
+            return -np.inf
+        #lp+=-0.5*((lga-lga_0)/p2_range)**2
+        if (np.abs(lga - lga_0) > p2_range):
             return -np.inf
 
     #lp += -0.5*(((Vlsr - Vlsr0)/Vlsr_err)**2 + math.log(2*math.pi*Vlsr_err**2))
@@ -464,10 +517,11 @@ def make_corner_plot(flat_samples) :
 
     best_fit_theta = np.zeros(itheta.size)
 
+    for i in range(best_fit_theta.size) : 
+        mcmc = np.percentile(flat_samples[:, i], [50])
+        best_fit_theta[i] = mcmc[0]
+
     if number_parameters > 0 : 
-        for i in range(best_fit_theta.size) : 
-            mcmc = np.percentile(flat_samples[:, i], [50])
-            best_fit_theta[i] = mcmc[0]
 
         pl.clf()
         labels = [r"$\log(\alpha_1)$",r"$\log(-\alpha_2)$", r"$V_{\rm lsr}$"]
@@ -484,13 +538,12 @@ def make_corner_plot(flat_samples) :
             txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
             print( "{0} = {1} {2} {3}".format(labels[i], mcmc[1], q[0], q[1]))
 
-
     print("best fit chisq = ", log_likelihood( best_fit_theta, return_chisq =True))
 
     alos_model, alos_obs, alos_err = model_and_data(best_fit_theta)
-    print(alos_model)
-    print(alos_obs)
-    print(alos_err)
+    #print(alos_model)
+    #print(alos_obs)
+    #print(alos_err)
     pl.clf()
     d = best_fit_theta[number_parameters:number_parameters+len(alos_model)]
     b = pulsar_data["latitude"]
