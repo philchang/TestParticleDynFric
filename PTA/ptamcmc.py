@@ -23,13 +23,14 @@ from galpy.potential import HernquistPotential
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 5000
+iterations = 10000
 thin = 200
 discard = 1000
 unique_name = True
 
 TINY_GR = 1e-20
 multithread = False
+processes = None
 
 excluded_pulsars = None
 nanograv = [0,1,2,3]
@@ -53,7 +54,7 @@ HALODISK = 6
 
 number_parameters = 1 # number of parameters for the galactic model
 
-MODEL = HALODISK
+MODEL = QUILLEN
 
 if MODEL == QUILLEN : 
     number_parameters = 1
@@ -516,6 +517,34 @@ def read_pulsar_data() :
                     "alos_gr" : alos_gr_arr, "alos_gr_err" : alos_gr_err, \
                     "alos" : alos_arr, "alos error" : alos_err, "number pulsars" : len(name_arr)}
 
+def run_samples( sampler, pos, iterations, min_steps=100, tau_multipler=100) : 
+    import time
+    current_iteration = 0
+    stop = False
+    autocorr = []
+    old_tau = np.inf
+    while not stop : 
+        nstep = min(min_steps, iterations-current_iteration) 
+        start = time.time()
+        sampler.run_mcmc(pos, nstep, progress=False)
+        end = time.time()
+        pos = None # run from current point
+        current_iteration += nstep
+        tau = sampler.get_autocorr_time(tol=0)
+        autocorr.append(np.mean(tau))
+        
+        # Check convergence
+        criteria1 = np.all(tau * tau_multipler < sampler.iteration)
+        criteria2 = np.all(np.abs(old_tau - tau) / tau < 0.01)
+        converged = criteria1 and criteria2
+
+        if(converged or current_iteration >= iterations) : 
+            stop = True
+        print("step: {0:07d}, mean tau: {1:5.2e}, conv. crit: {3}, steps to conv: {4:5.2e}, it/s: {5:5.2e}".format(current_iteration, np.mean(tau), criteria1, criteria2, np.max(tau_multipler*tau), nstep/(end-start)))
+        old_tau = tau
+    return autocorr
+
+
 def run_mcmc() :
 
     itheta = initialize_theta( frac_random=0.)
@@ -539,13 +568,15 @@ def run_mcmc() :
         backend.reset(nwalkers, ndim)
 
     sampler = None
+    current_iteration = 0
     if multithread : 
-        with multiprocessing.Pool(4) as pool : 
+        with multiprocessing.Pool(processes=processes) as pool : 
             sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, backend=backend, pool=pool)
-            sampler.run_mcmc(pos, iterations, progress=True)
+            run_samples(sampler, pos, iterations)
     else :
         sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, backend=backend)
-        sampler.run_mcmc(pos, iterations, progress=True)
+        run_samples(sampler, pos, iterations)
+        #sampler.run_mcmc(pos, iterations, progress=True)
 
     flat_samples = sampler.get_chain(discard=discard, thin=thin, flat=True)
 
@@ -625,9 +656,10 @@ parser.add_argument('-o', help="hdf5 file to store/load mcmc chain")
 parser.add_argument('--load_previous', action='store_true',
                     default=False,
                     help="load MCMC from file")
-parser.add_argument('--multi', action='store_true',
-                    default=False,
+parser.add_argument('--multi', action="store_true",
+                    default=None,
                     help="use multiprocessing")
+parser.add_argument('--num_procs', type=int, default=0, help="set number of processes to use for multiprocessing")
 
 args = parser.parse_args()
 
@@ -635,6 +667,10 @@ if not args.o is None :
     filename = args.o
 
 multithread = args.multi
+
+if( args.num_procs > 0) : 
+    multithread = True
+    processes = args.num_procs
 
 read_pulsar_data()
 flat_samples = None
