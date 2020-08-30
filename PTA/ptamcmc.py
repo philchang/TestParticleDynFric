@@ -23,9 +23,9 @@ from galpy.potential import HernquistPotential
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 20000
+iterations = 5000
 thin = 200
-discard = 5000
+discard = 1000
 unique_name = True
 
 TINY_GR = 1e-20
@@ -35,7 +35,6 @@ excluded_pulsars = None
 nanograv = [0,1,2,3]
 ppta = [4,5,6,7,8,9]
 epta = [10,11,12,13]
-#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11]
 best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11]
 
 use_other_distance = [5, 7, 9]
@@ -50,10 +49,11 @@ GAUSSIAN = 2
 MWpot = 3
 Hernquistfix = 4
 HERNQUIST = 5
+HALODISK = 6
 
-number_parameters = 2 # number of parameters for the galactic model
+number_parameters = 1 # number of parameters for the galactic model
 
-MODEL = MWpot
+MODEL = HALODISK
 
 if MODEL == QUILLEN : 
     number_parameters = 1
@@ -65,6 +65,10 @@ elif MODEL == Hernquistfix:
     number_parameters = 0
 elif MODEL == HERNQUIST:
     number_parameters = 2
+elif MODEL == HALODISK: 
+    number_parameters = 4
+
+print ("MODEL=",MODEL)
 
 ## location of Sun -
 rsun= 8.122 ## in kpc
@@ -108,8 +112,8 @@ mas_per_year_to_as_per_sec = 1e-3/3.15e7
 
 Vlsr_quillen = 233.e5 ## from Schonrich et al. 2010 in cm/s
 
-Vlsr0 = Vlsr_quillen#
-Vlsr0 = 255.2*1e5
+Vlsr = Vlsr_quillen#
+Vlsr = 255.2*1e5
 Vlsr_err = 5.1*1e5
 G = 6.67e-8
 
@@ -123,9 +127,6 @@ def accHernquistfix(x,y,z):
     ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)
     az = -az*1.e5/(1.e6*3.15e7)
     ar = ar*1.e5/(1.e6*3.15e7)
-    #ar2 = 255e5**2/(r*kpctocm)
-    #print(x,y,z)
-    #print("ar = ", ar/ar2,az/ar2)
     ax = -ar*x/r
     ay = -ar*y/r
     return ax,ay,az
@@ -154,7 +155,9 @@ def acc_gauss(x,y,z,rho0,z0, Vlsr) :
     ay = -ar*y/r
     return ax,ay,az
 
-def acc_exp(x,y,z,rho0,z0, Vlsr) : 
+def acc_exp(x,y,z,rho0,z0, Vlsr) :
+#    rho0 = 1e1**lgrho0
+#    z0 = 1e1**lgz0
     r = np.sqrt(x*x + y*y) 
     az = -4*np.pi*G*rho0*z0*(1.-np.exp(-np.abs(z)/z0))*np.sign(z)
     ar = Vlsr*Vlsr/r
@@ -184,23 +187,46 @@ def accHernquist(x,y,z,lgMh,lga):
     ay = -ar*y/r
     return ax,ay,az
 
-## define acceleration components to fit the data, from Quillen et al. 2020:
-def alos(x,y,z,parameter1,parameter2, Vlsr):
+def accHernquistplusdisk(x,y,z,lgMh,lga,rho0,z0, Vlsr):
+    r = np.sqrt(x**2 + y**2 + z**2)
+    Mh = 1e1**lgMh
+    a = 1e1**lga
+    arh = (G*Mh)/((r+a)**2)
+    azh = ((G*Mh)*(z/r))/((r+a)**2)
 
+## convert loga and logrho?
+
+    rr = np.sqrt(x*x + y*y)
+    azdisk = 4*np.pi*G*rho0*z0*(1.-np.exp(-np.abs(z)/z0))*np.sign(z)
+    ardisk = Vlsr*Vlsr/rr
+
+## is this correct? (r = sqrt(x^2+y^2) for disk but not for sphere) 
+    ar = arh + ardisk
+    az = -azh - azdisk 
+    ax = -ar*x/r
+    ay = -ar*y/r
+
+    return ax,ay,az
+
+## define acceleration components to fit the data, from Quillen et al. 2020:
+def alos(x,y,z,parameters):
+    global Vlsr
     ax,ay,az = 0,0,0
     axsun, aysun, azsun = 0,0,0
     if MODEL == QUILLEN : 
-        lgalpha1, lgalpha2 = parameter1, parameter2
+        lgalpha1, lgalpha2 = parameters[0], -np.inf
+        if(number_parameters > 1) : 
+            lgalpha2 = parameters[1]
         axsun, aysun, azsun = acc_quillen(xsun,ysun,zsun, lgalpha1, lgalpha2, Vlsr)
         ax, ay, az = acc_quillen(x,y,z,lgalpha1,lgalpha2, Vlsr)
     elif MODEL == EXPONENTIAL :
-        lgrho0, lgz0 = parameter1, parameter2
+        lgrho0, lgz0 = parameters[0:2]
         rho0 = 1e1**lgrho0
         z0 = 1e1**lgz0
         axsun, aysun, azsun = acc_exp(xsun,ysun,zsun, rho0, z0, Vlsr)
         ax, ay, az = acc_exp(x,y,z,rho0,z0, Vlsr)
     elif MODEL == GAUSSIAN :
-        lgrho0, lgz0 = parameter1, parameter2
+        lgrho0, lgz0 = parameters[0:2]
         rho0 = 1e1**lgrho0
         z0 = 1e1**lgz0
         axsun, aysun, azsun = acc_gauss(xsun,ysun,zsun, rho0, z0, Vlsr)
@@ -212,24 +238,32 @@ def alos(x,y,z,parameter1,parameter2, Vlsr):
         axsun,aysun,azsun = accHernquistfix(x,y,z)
         ax,ay,az = accHernquistfix(xsun,ysun,zsun)
     elif MODEL == HERNQUIST:
-        lgMh, lga = parameter1, parameter2
+        lgMh, lga = parameters[0:2]
         Mh = 1e1**lgMh
         a = 1e1**lga
         axsun,aysun,azsun = accHernquist(x,y,z,lgMh,lga)
         ax,ay,az = accHernquist(xsun,ysun,zsun,lgMh,lga)
-
+    elif MODEL == HALODISK:
+        lgMh,lga,lgrho0,lgz0 = parameters[0:4]
+        Mh = 1e1**lgMh
+        a = 1e1**lga
+        rho0 = 1e1**lgrho0
+        z0 = 1e1**lgz0
+        axsun,aysun,azsun = accHernquistplusdisk(xsun,ysun,zsun,lgMh,lga,rho0,z0,Vlsr)
+        ax,ay,az = accHernquistplusdisk(x,y,z,lgMh,lga,rho0,z0,Vlsr)
+    
     dx, dy, dz = x-xsun, y-ysun, z-zsun
     dr = np.sqrt(dx*dx+dy*dy+dz*dz)
 
     return ((ax-axsun)*dx + (ay-aysun)*dy + (az-azsun)*dz)/(np.maximum(dr,1.e-10))
 
-def alos_from_pulsar(d, b, l, mus, alos_gr, lgalpha1, lgalpha2, Vlsr) : 
+def alos_from_pulsar(d, b, l, mus, alos_gr, parameters) : 
     ## pulsar positions --
     x = d * np.cos(b*np.pi/180.) * np.cos(l*np.pi/180.) *kpctocm + xsun
     y = d * np.cos(b*np.pi/180.) * np.sin(l*np.pi/180.) * kpctocm + ysun
     z = d * np.sin(b*np.pi/180.) * kpctocm + zsun
 
-    al = alos(x,y,z,lgalpha1,lgalpha2, Vlsr)
+    al = alos(x,y,z,parameters)
 
     # include sloskey effect mu^2 *d /c
     al_sl = mus*mus*d*kpctocm/c
@@ -278,9 +312,19 @@ def initialize_theta( frac_random=1) :
         lga = lga_0 + 0.01*np.random.randn(1)[0]*frac_random
         theta[0] = lgMh
         theta[1] = lga
+    elif MODEL == HALODISK:
+        lgMh = lgMh_0 + 0.1*np.random.randn(1)[0]*frac_random
+        lga = lga_0 + 0.01*np.random.randn(1)[0]*frac_random
+        lgrho0 = lgrho_midplane + 0.1*np.random.randn(1)[0]*frac_random
+        lgz0 = lgscale_height + 0.1*np.random.randn(1)[0]*frac_random
+        theta[0] = lgMh
+        theta[1] = lga
+        theta[2] = lgrho0
+        theta[3] = lgz0 
 
-    if(number_parameters > 2) :
-        theta[2] = Vlsr0 + Vlsr_err*np.random.randn(1)[0]*frac_random
+#    if(number_parameters > 2) :   ## CHECK THIS
+# I DON'T THINK THIS IS NEEDED
+#        theta[2] = Vlsr0 + Vlsr_err*np.random.randn(1)[0]*frac_random
     theta[number_parameters:number_pulsars+number_parameters] = distances + distance_err*np.random.randn(number_pulsars)*frac_random
     theta[number_pulsars+number_parameters:2*number_pulsars+number_parameters] = mus + mu_err*np.random.randn(number_pulsars)*frac_random
     theta[2*number_pulsars+number_parameters:] = alos_gr + alos_gr_err*np.random.randn(number_pulsars)*frac_random
@@ -288,30 +332,22 @@ def initialize_theta( frac_random=1) :
     return theta
 
 def unpack_theta( theta, number_pulsars) :
-    parameter1 = -np.inf
+    parameters = None
     if( number_parameters > 0) :
-        parameter1 = theta[0]
+        parameters = theta[0:number_parameters]
     
-    parameter2 = -np.inf
-    if( number_parameters > 1) :
-        parameter2 = theta[1]
-
-    Vlsr = Vlsr0
-
-    if( number_parameters > 2) : 
-        Vlsr = theta[2]
     distances = theta[number_parameters:number_pulsars+number_parameters]
     mus = theta[number_parameters+number_pulsars:number_parameters+2*number_pulsars]
     alos_gr = theta[number_parameters+2*number_pulsars:]
-    return parameter1, parameter2, Vlsr, distances, mus, alos_gr
+    return parameters, distances, mus, alos_gr
 
 def model_and_data( theta) : 
     global pulsar_data
     number_pulsars = pulsar_data["number pulsars"]
-    lgalpha1, lgalpha2, Vlsr, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
+    parameters, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
     b = pulsar_data["latitude"]
     l = pulsar_data["longitude"]
-    alos_model = alos_from_pulsar( distances, b, l, mus, alos_gr, lgalpha1, lgalpha2, Vlsr)
+    alos_model = alos_from_pulsar( distances, b, l, mus, alos_gr, parameters)
     alos_obs = pulsar_data["alos"]
     alos_err = pulsar_data["alos error"]
 
@@ -330,7 +366,7 @@ def log_likelihood( theta, return_chisq = False) :
 def log_prior( theta) :
     global pulsar_data 
     number_pulsars = pulsar_data["number pulsars"]
-    p1, p2, Vlsr, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
+    parameters, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
 
     distance_err = pulsar_data["distance error"]
     mu_err = pulsar_data["mu error"]
@@ -343,24 +379,37 @@ def log_prior( theta) :
     # define the range in alpha1, alpha2
     lp = 0
     if MODEL == QUILLEN : 
-        lgalpha1, lgalpha2 = p1, p2
+        lgalpha1 = parameters[0]
         if( np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
             return -np.inf
-        if(number_parameters > 1 and np.abs(lgalpha2 - lgalpha2_0) > p2_range) :
-            return -np.inf
+        if(number_parameters > 1) :
+            lgalpha2 = parameters[1]
+            if( np.abs(lgalpha2 - lgalpha2_0) > p2_range) :
+                return -np.inf
     elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN :
-        lgrho0, lgz0 = p1,p2 
+        lgrho0, lgz0 = parameters[0:2] 
         if( np.abs(lgrho0 - lgrho_midplane) > p1_range)  :
             return -np.inf
         if(number_parameters > 1 and np.abs(lgz0 - lgscale_height) > p2_range) :
             return -np.inf
     elif MODEL == HERNQUIST:
-        lgMh, lga = p1,p2
+        lgMh, lga = parameters[0:2]
         if (np.abs(lgMh - lgMh_0) > p1_range) :
             return -np.inf
         #lp+=-0.5*((lga-lga_0)/p2_range)**2
         if (np.abs(lga - lga_0) > p2_range):
             return -np.inf
+    elif MODEL == HALODISK:
+        lgMh, lga, lgrho0, lgz0 = parameters[0:4]
+        if (np.abs(lgMh - lgMh_0) > p1_range) :
+            return -np.inf
+        if (np.abs(lga - lga_0) > p2_range):
+            return -np.inf
+        if( np.abs(lgrho0 - lgrho_midplane) > p1_range)  :
+            return -np.inf
+        if(number_parameters > 1 and np.abs(lgz0 - lgscale_height) > p2_range) :
+            return -np.inf
+
 
     #lp += -0.5*(((Vlsr - Vlsr0)/Vlsr_err)**2 + math.log(2*math.pi*Vlsr_err**2))
     lp += 0.5*np.sum(-((distances-distance_arr)/distance_err)**2)# - np.log(2*np.pi*distance_err**2))
@@ -524,7 +573,7 @@ def make_corner_plot(flat_samples) :
     if number_parameters > 0 : 
 
         pl.clf()
-        labels = [r"$\log(\alpha_1)$",r"$\log(-\alpha_2)$", r"$V_{\rm lsr}$"]
+        labels = [r"$\log(Mh)$",r"$\log(a)$", r"$\log(rho0)$", r"$\log(z0)$", r"$V_{\rm lsr}$"]
         if MODEL == EXPONENTIAL or MODEL == GAUSSIAN : 
             labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
             flat_samples[:,0] -= math.log10(2e33/pc**3)
