@@ -23,9 +23,9 @@ from galpy.potential import HernquistPotential
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 10000
-thin = 200
-discard = 1000
+iterations = 20000
+thin = 500
+discard = 5000
 unique_name = True
 
 TINY_GR = 1e-20
@@ -51,23 +51,26 @@ MWpot = 3
 Hernquistfix = 4
 HERNQUIST = 5
 HALODISK = 6
+LOCAL = 7
 
 number_parameters = 1 # number of parameters for the galactic model
 
 MODEL = QUILLEN
 
 if MODEL == QUILLEN : 
-    number_parameters = 1
+    number_parameters = 2
 elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN :
     number_parameters = 2
 elif MODEL == MWpot :
-    number_parameters = 0
+    number_parameters = 2
 elif MODEL == Hernquistfix: 
     number_parameters = 0
 elif MODEL == HERNQUIST:
     number_parameters = 2
 elif MODEL == HALODISK: 
     number_parameters = 4
+elif MODEL == LOCAL : 
+    number_parameters = 3
 
 print ("MODEL=",MODEL)
 
@@ -76,6 +79,8 @@ rsun= 8.122 ## in kpc
 xsun = rsun
 ysun = 0.
 zsun = 0.0055  ## in kpc from Quillen et al. 2020
+phisun = np.arctan2(xsun, ysun)
+
 kpctocm = 3.086e21 ## convert pc to cm
 pc = kpctocm*1e-3
 Msun = 1.989e33   ## in g
@@ -89,7 +94,7 @@ alpha2_0 = -1e-51
 lgalpha1_0 = math.log10( alpha1_0)
 lgalpha2_0 = math.log10( -alpha2_0)
 
-p1_range = 5
+p1_range = 1
 p2_range = 2
 
 # exponential or gaussian model constants
@@ -118,6 +123,25 @@ Vlsr = 255.2*1e5
 Vlsr_err = 5.1*1e5
 G = 6.67e-8
 
+# MW 2014 parameters
+alpha_mw2014 = 1.8
+alpha_mw2014_range = 0.1
+rc_mw2014 = 1.9
+rc_mw2014_range = 0.1
+lg_a0_mw2014 = math.log(3.)
+lg_a0_mw2014_range = 0.5
+lg_b0_mw2014 = math.log(0.28)
+lg_b0_mw2014_range = 0.5
+
+# Local expansion
+dadr0 = -1
+dadr_range = 1
+dadphi0 = 0.
+dadphi_range = 1
+lgdadz0 = lgalpha1_0
+lgdadz_range = p1_range
+
+
 def accHernquistfix(x,y,z):
     x = x/kpctocm
     y = y/kpctocm
@@ -132,14 +156,20 @@ def accHernquistfix(x,y,z):
     ay = -ar*y/r
     return ax,ay,az
 
-def accMWpot(x,y,z):
+
+def accMWpot(x,y,z,alpha=1.8, rc=1.9, a=3., b=0.28):
     x = x/kpctocm
     y = y/kpctocm
     z = z/kpctocm
     r = np.sqrt( x**2 + y**2)
-    pot = MWPotential2014
-    az = evaluatezforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(220.,8.122)
-    ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(220.,8.122)
+    bp= gp.PowerSphericalPotentialwCutoff(alpha=1.8,rc=1.9/8.,normalize=0.05)
+    mp= gp.MiyamotoNagaiPotential(a=a/8.,b=b/8.,normalize=.6)
+    nfw= gp.NFWPotential(a=16/8.,normalize=.35)
+    #print(help(MWPotential2014))
+    pot = [bp,mp,nfw]
+    #pot = MWPotential2014
+    az = evaluatezforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(Vlsr/1e5,8.122)
+    ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(Vlsr/1e5,8.122)
     ar = ar*1.e5/(1.e6*3.15e7)
     az = -az*1.e5/(1.e6*3.15e7)
     ar = 255e5**2/(r*kpctocm)
@@ -176,6 +206,20 @@ def acc_quillen(x,y,z,lgalpha1, lgalpha2, Vlsr) :
     ar = Vlsr*Vlsr/r
     ax = -ar*x/r
     ay = -ar*y/r
+    return ax,ay,az
+
+def acc_local_expansion( x, y, z, dadr=dadphi0, dadphi=dadphi0, dadz=1e1**lgdadz0) :
+    r = np.sqrt(x*x + y*y)
+    rsun = np.sqrt(xsun*xsun + ysun*ysun)
+
+    arsun = Vlsr*Vlsr/rsun
+    #ar = Vlsr*Vlsr/r
+    ar = arsun*(1+dadr*(r-rsun)/rsun)
+    deltaphi = np.arctan2(x, y) - phisun 
+    aphi = arsun*dadphi*deltaphi
+    az = -dadz*z
+    ax = -ar*x/r - aphi*y/r
+    ay = -ar*y/r + aphi*x/r
     return ax,ay,az
 
 def accHernquist(x,y,z,lgMh,lga):
@@ -233,8 +277,14 @@ def alos(x,y,z,parameters):
         axsun, aysun, azsun = acc_gauss(xsun,ysun,zsun, rho0, z0, Vlsr)
         ax, ay, az = acc_gauss(x,y,z,rho0,z0, Vlsr)
     elif MODEL == MWpot:
-        axsun,aysun,azsun = accMWpot(x,y,z)
-        ax,ay,az = accMWpot(xsun,ysun,zsun)
+        if number_parameters == 0 :
+            axsun,aysun,azsun = accMWpot(xsun,ysun,zsun)
+            ax,ay,az = accMWpot(x,y,z)
+        else : 
+            lga, lgb = parameters[0:2]
+            axsun,aysun,azsun = accMWpot(xsun,ysun,zsun, a=1e1**lga, b=1e1**lgb)
+            ax,ay,az = accMWpot(x,y,z, a=1e1**lga, b=1e1**lgb)
+
     elif MODEL == Hernquistfix:
         axsun,aysun,azsun = accHernquistfix(x,y,z)
         ax,ay,az = accHernquistfix(xsun,ysun,zsun)
@@ -252,6 +302,11 @@ def alos(x,y,z,parameters):
         z0 = 1e1**lgz0
         axsun,aysun,azsun = accHernquistplusdisk(xsun,ysun,zsun,lgMh,lga,rho0,z0,Vlsr)
         ax,ay,az = accHernquistplusdisk(x,y,z,lgMh,lga,rho0,z0,Vlsr)
+    elif MODEL == LOCAL : 
+        dadr, dadphi, lgdadz = parameters[0:3]
+        dadz = 1e1**lgdadz
+        axsun, aysun, azsun = acc_local_expansion( xsun, ysun, zsun, dadr, dadphi, dadz) 
+        ax, ay, az = acc_local_expansion( x, y, z, dadr, dadphi, dadz) 
     
     dx, dy, dz = x-xsun, y-ysun, z-zsun
     dr = np.sqrt(dx*dx+dy*dy+dz*dz)
@@ -322,6 +377,15 @@ def initialize_theta( frac_random=1) :
         theta[1] = lga
         theta[2] = lgrho0
         theta[3] = lgz0 
+    elif MODEL == MWpot and number_parameters > 0:
+        #theta[0] = alpha_mw2014 + alpha_mw2014_range*np.random.randn(1)[0]*frac_random
+        #theta[1] = rc_mw2014 + rc_mw2014_range*np.random.randn(1)[0]*frac_random
+        theta[0] = lg_a0_mw2014 + lg_a0_mw2014_range*np.random.randn(1)[0]*frac_random
+        theta[1] = lg_b0_mw2014 + lg_b0_mw2014_range*np.random.randn(1)[0]*frac_random
+    elif MODEL == LOCAL : 
+        theta[0] = dadr0 + 0.1*dadr_range*np.random.randn(1)[0]*frac_random
+        theta[1] = dadphi0 + 0.1*dadphi_range*np.random.randn(1)[0]*frac_random
+        theta[2] = lgdadz0 + 0.1*lgdadz_range*np.random.randn(1)[0]*frac_random
 
 #    if(number_parameters > 2) :   ## CHECK THIS
 # I DON'T THINK THIS IS NEEDED
@@ -359,10 +423,9 @@ def log_likelihood( theta, return_chisq = False) :
     if( not return_chisq) :
         ll = 0.5*np.sum( -((alos_obs - alos_model)/alos_err)**2 - np.log(2*np.pi*alos_err*alos_err))
         ll = 0.5*np.sum( -((alos_obs - alos_model)/alos_err)**2)# - np.log(2*np.pi*alos_err*alos_err))
-
         return ll
     else :
-        return np.sum(((alos_obs - alos_model)/alos_err)**2)
+        return np.sum(((alos_obs - alos_model)/alos_err)**2), ((alos_obs - alos_model)/alos_err)**2
 
 def log_prior( theta) :
     global pulsar_data 
@@ -379,6 +442,7 @@ def log_prior( theta) :
 
     # define the range in alpha1, alpha2
     lp = 0
+#    print("Here")
     if MODEL == QUILLEN : 
         lgalpha1 = parameters[0]
         if( np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
@@ -410,7 +474,21 @@ def log_prior( theta) :
             return -np.inf
         if(number_parameters > 1 and np.abs(lgz0 - lgscale_height) > p2_range) :
             return -np.inf
-
+    elif MODEL == MWpot : 
+        if( number_parameters > 0 ) : 
+            lga, lgb = parameters[0:2]
+            #lp += -0.5*((alpha-alpha_mw2014)/alpha_mw2014_range)**2
+            #lp += -0.5*((rc-rc_mw2014)/rc_mw2014_range)**2
+            lp += -0.5*((lga-lg_a0_mw2014)/lg_a0_mw2014_range)**2
+            lp += -0.5*((lgb-lg_b0_mw2014)/lg_b0_mw2014_range)**2
+    elif MODEL == LOCAL : 
+        dadr, dadphi, lgdadz = parameters[0:3]
+        if( np.abs(dadr - dadr0) > dadr_range ) : 
+            return -np.inf
+        if( np.abs(dadphi-dadphi0 ) > dadphi_range) : 
+            return -np.inf
+        if( np.abs(lgdadz - lgdadz0) > lgdadz_range) :
+            return -np.inf
 
     #lp += -0.5*(((Vlsr - Vlsr0)/Vlsr_err)**2 + math.log(2*math.pi*Vlsr_err**2))
     lp += 0.5*np.sum(-((distances-distance_arr)/distance_err)**2)# - np.log(2*np.pi*distance_err**2))
@@ -517,7 +595,7 @@ def read_pulsar_data() :
                     "alos_gr" : alos_gr_arr, "alos_gr_err" : alos_gr_err, \
                     "alos" : alos_arr, "alos error" : alos_err, "number pulsars" : len(name_arr)}
 
-def run_samples( sampler, pos, iterations, min_steps=100, tau_multipler=100) : 
+def run_samples( sampler, pos, iterations, min_steps=1000, tau_multipler=100) : 
     import time
     current_iteration = 0
     stop = False
@@ -526,7 +604,7 @@ def run_samples( sampler, pos, iterations, min_steps=100, tau_multipler=100) :
     while not stop : 
         nstep = min(min_steps, iterations-current_iteration) 
         start = time.time()
-        sampler.run_mcmc(pos, nstep, progress=False)
+        sampler.run_mcmc(pos, nstep, progress=True)
         end = time.time()
         pos = None # run from current point
         current_iteration += nstep
@@ -541,12 +619,13 @@ def run_samples( sampler, pos, iterations, min_steps=100, tau_multipler=100) :
         if(converged or current_iteration >= iterations) : 
             stop = True
         print("step: {0:07d}, mean tau: {1:5.2e}, conv. crit: {3}, steps to conv: {4:5.2e}, it/s: {5:5.2e}".format(current_iteration, np.mean(tau), criteria1, criteria2, np.max(tau_multipler*tau), nstep/(end-start)))
+
         old_tau = tau
     return autocorr
 
 
 def run_mcmc() :
-
+    import time
     itheta = initialize_theta( frac_random=0.)
 
     nwalkers = 100
@@ -569,6 +648,7 @@ def run_mcmc() :
 
     sampler = None
     current_iteration = 0
+    start = time.time()
     if multithread : 
         with multiprocessing.Pool(processes=processes) as pool : 
             sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, backend=backend, pool=pool)
@@ -577,34 +657,48 @@ def run_mcmc() :
         sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, backend=backend)
         run_samples(sampler, pos, iterations)
         #sampler.run_mcmc(pos, iterations, progress=True)
+    end = time.time()
 
+    print("Iterations {0} took {1:.1f} seconds; average it/s: {2:.2f}".format(iterations, end-start, iterations/(end-start)))
     flat_samples = sampler.get_chain(discard=discard, thin=thin, flat=True)
-
-    return flat_samples 
+    flat_log_prob = sampler.get_log_prob(discard=discard, flat=True, thin=thin)
+    
+    return flat_samples, flat_log_prob
 
 def read_samples():
     reader = emcee.backends.HDFBackend(filename)
     flat_samples = reader.get_chain(discard=discard, flat=True, thin=thin)
+    flat_log_prob = reader.get_log_prob(discard=discard, flat=True, thin=thin)
+    return flat_samples, flat_log_prob
 
-    return flat_samples
+def get_best_fit( flat_samples, flat_log_prob, show_chi_sq_arr = True) : 
+    itheta = initialize_theta( frac_random=0.)
+    best_fit_theta = np.zeros(itheta.shape)
+    for i in range(best_fit_theta.size) : 
+       mcmc = np.percentile(flat_samples[:, i], [50])
+       best_fit_theta[i] = mcmc[0]
+ 
+    chi_sq, chi_sq_arr = log_likelihood( best_fit_theta, return_chisq =True)
+    print("best fit chisq = ", chi_sq)
+    if( show_chi_sq_arr) :
+        print("Chi square array = ", chi_sq_arr)
+    return best_fit_theta
 
-def make_corner_plot(flat_samples) :
+
+def make_corner_plot(flat_samples, flat_log_prob) :
     global pulsar_data
     import matplotlib.pyplot as pl
     import corner
-
-    itheta = initialize_theta( frac_random=0.)
-
-    best_fit_theta = np.zeros(itheta.size)
-
-    for i in range(best_fit_theta.size) : 
-        mcmc = np.percentile(flat_samples[:, i], [50])
-        best_fit_theta[i] = mcmc[0]
+    
+    best_fit_theta = get_best_fit( flat_samples, flat_log_prob)    
 
     if number_parameters > 0 : 
 
         pl.clf()
-        labels = [r"$\log(Mh)$",r"$\log(a)$", r"$\log(rho0)$", r"$\log(z0)$", r"$V_{\rm lsr}$"]
+        labels = []
+        for i in range(number_parameters) : 
+            labels.append("p{0} = ".format(i))
+        #labels = [r"$\log(Mh)$",r"$\log(a)$", r"$\log(rho0)$", r"$\log(z0)$", r"$V_{\rm lsr}$"]
         if MODEL == EXPONENTIAL or MODEL == GAUSSIAN : 
             labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
             flat_samples[:,0] -= math.log10(2e33/pc**3)
@@ -618,7 +712,6 @@ def make_corner_plot(flat_samples) :
             txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
             print( "{0} = {1} {2} {3}".format(labels[i], mcmc[1], q[0], q[1]))
 
-    print("best fit chisq = ", log_likelihood( best_fit_theta, return_chisq =True))
 
     alos_model, alos_obs, alos_err = model_and_data(best_fit_theta)
     #print(alos_model)
@@ -675,8 +768,8 @@ if( args.num_procs > 0) :
 read_pulsar_data()
 flat_samples = None
 if( args.load_previous) :
-    flat_samples = read_samples()
+    flat_samples, flat_log_prob = read_samples()
 else : 
-    flat_samples = run_mcmc()
+    flat_samples, flat_log_prob = run_mcmc()
 
-make_corner_plot( flat_samples)
+make_corner_plot( flat_samples, flat_log_prob)
