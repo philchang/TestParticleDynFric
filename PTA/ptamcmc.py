@@ -9,6 +9,11 @@ import scipy as sp
 import math
 import emcee
 import os
+import matplotlib
+matplotlib.use("Agg")
+matplotlib.rcParams.update({"text.usetex": True})
+
+import matplotlib.pyplot as pl
 import astropy.coordinates as coord
 import astropy.units as u
 import galpy.potential as gp
@@ -23,9 +28,9 @@ from galpy.potential import HernquistPotential
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 20000
-thin = 500
-discard = 5000
+iterations = 10000
+thin = 200
+discard = 1000
 unique_name = True
 
 TINY_GR = 1e-20
@@ -52,27 +57,35 @@ Hernquistfix = 4
 HERNQUIST = 5
 HALODISK = 6
 LOCAL = 7
+SECH2 = 8
+POWER_LAW = 9
 
 number_parameters = 1 # number of parameters for the galactic model
 
-MODEL = QUILLEN
+DEFAULT_MODEL = QUILLEN
+MODEL = DEFAULT_MODEL
 
-if MODEL == QUILLEN : 
-    number_parameters = 2
-elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN :
-    number_parameters = 2
-elif MODEL == MWpot :
-    number_parameters = 2
-elif MODEL == Hernquistfix: 
-    number_parameters = 0
-elif MODEL == HERNQUIST:
-    number_parameters = 2
-elif MODEL == HALODISK: 
-    number_parameters = 4
-elif MODEL == LOCAL : 
-    number_parameters = 3
+def initialize_model( model=MODEL) : 
+    global number_parameters, MODEL
+    if model == QUILLEN : 
+        number_parameters = 2
+    elif model == EXPONENTIAL or model == GAUSSIAN or model == SECH2:
+        number_parameters = 2
+    elif model == MWpot :
+        number_parameters = 2
+    elif model == Hernquistfix: 
+        number_parameters = 0
+    elif model == HERNQUIST:
+        number_parameters = 2
+    elif model == HALODISK: 
+        number_parameters = 4
+    elif model == LOCAL : 
+        number_parameters = 3
+    if model == POWER_LAW : 
+        number_parameters = 3
 
-print ("MODEL=",MODEL)
+    MODEL = model
+    print ("MODEL=",MODEL)
 
 ## location of Sun -
 rsun= 8.122 ## in kpc
@@ -94,7 +107,7 @@ alpha2_0 = -1e-51
 lgalpha1_0 = math.log10( alpha1_0)
 lgalpha2_0 = math.log10( -alpha2_0)
 
-p1_range = 1
+p1_range = 3
 p2_range = 2
 
 # exponential or gaussian model constants
@@ -141,6 +154,11 @@ dadphi_range = 1
 lgdadz0 = lgalpha1_0
 lgdadz_range = p1_range
 
+# power law
+eta0 = 0
+eta_range = 0.5
+zmid0 = 0
+zmid_range = 0.5
 
 def accHernquistfix(x,y,z):
     x = x/kpctocm
@@ -186,11 +204,14 @@ def acc_gauss(x,y,z,rho0,z0, Vlsr) :
     ay = -ar*y/r
     return ax,ay,az
 
-def acc_exp(x,y,z,rho0,z0, Vlsr) :
+def acc_exp(x,y,z,rho0,z0, Vlsr, useSech2=False) :
 #    rho0 = 1e1**lgrho0
 #    z0 = 1e1**lgz0
     r = np.sqrt(x*x + y*y) 
     az = -4*np.pi*G*rho0*z0*(1.-np.exp(-np.abs(z)/z0))*np.sign(z)
+    if( useSech2) :
+        az = -4*np.pi*G*rho0*z0*np.tanh(z/z0)
+
     ar = Vlsr*Vlsr/r
     ax = -ar*x/r
     ay = -ar*y/r
@@ -207,6 +228,16 @@ def acc_quillen(x,y,z,lgalpha1, lgalpha2, Vlsr) :
     ax = -ar*x/r
     ay = -ar*y/r
     return ax,ay,az
+
+def acc_power_law(x,y,z,lgalpha1, eta, zmid, Vlsr) :
+    r = np.sqrt(x*x + y*y) 
+    alpha1 = 1e1**lgalpha1
+    az = -alpha1*(1 - eta*np.abs(z/kpctocm-zmid)) * (z-zmid*kpctocm)
+    ar = Vlsr*Vlsr/r
+    ax = -ar*x/r
+    ay = -ar*y/r
+    return ax,ay,az
+
 
 def acc_local_expansion( x, y, z, dadr=dadphi0, dadphi=dadphi0, dadz=1e1**lgdadz0) :
     r = np.sqrt(x*x + y*y)
@@ -264,7 +295,7 @@ def alos(x,y,z,parameters):
             lgalpha2 = parameters[1]
         axsun, aysun, azsun = acc_quillen(xsun,ysun,zsun, lgalpha1, lgalpha2, Vlsr)
         ax, ay, az = acc_quillen(x,y,z,lgalpha1,lgalpha2, Vlsr)
-    elif MODEL == EXPONENTIAL :
+    elif MODEL == EXPONENTIAL or MODEL == SECH2:
         lgrho0, lgz0 = parameters[0:2]
         rho0 = 1e1**lgrho0
         z0 = 1e1**lgz0
@@ -307,6 +338,10 @@ def alos(x,y,z,parameters):
         dadz = 1e1**lgdadz
         axsun, aysun, azsun = acc_local_expansion( xsun, ysun, zsun, dadr, dadphi, dadz) 
         ax, ay, az = acc_local_expansion( x, y, z, dadr, dadphi, dadz) 
+    if MODEL == POWER_LAW : 
+        lgalpha1, eta, zmid = parameters[0:3]
+        axsun, aysun, azsun = acc_power_law(xsun,ysun,zsun, lgalpha1, eta, zmid, Vlsr)
+        ax, ay, az = acc_power_law(x,y,z,lgalpha1, eta, zmid, Vlsr)
     
     dx, dy, dz = x-xsun, y-ysun, z-zsun
     dr = np.sqrt(dx*dx+dy*dy+dz*dz)
@@ -358,7 +393,7 @@ def initialize_theta( frac_random=1) :
         theta[0] = lgalpha1
         if(number_parameters > 1) :
             theta[1] = lgalpha2
-    elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN: 
+    elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2: 
         lgrho0 = lgrho_midplane + 0.1*np.random.randn(1)[0]*frac_random
         lgz0 = lgscale_height + 0.1*np.random.randn(1)[0]*frac_random
         theta[0] = lgrho0
@@ -386,6 +421,10 @@ def initialize_theta( frac_random=1) :
         theta[0] = dadr0 + 0.1*dadr_range*np.random.randn(1)[0]*frac_random
         theta[1] = dadphi0 + 0.1*dadphi_range*np.random.randn(1)[0]*frac_random
         theta[2] = lgdadz0 + 0.1*lgdadz_range*np.random.randn(1)[0]*frac_random
+    elif MODEL == POWER_LAW : 
+        theta[0] = lgalpha1_0 + 0.1*np.random.randn(1)[0]*frac_random
+        theta[1] = eta0 + 0.1*eta_range*np.random.randn(1)[0]*frac_random
+        theta[2] = zmid0 + 0.1*zmid_range*np.random.randn(1)[0]*frac_random
 
 #    if(number_parameters > 2) :   ## CHECK THIS
 # I DON'T THINK THIS IS NEEDED
@@ -409,10 +448,12 @@ def unpack_theta( theta, number_pulsars) :
 def model_and_data( theta) : 
     global pulsar_data
     number_pulsars = pulsar_data["number pulsars"]
-    parameters, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
-    b = pulsar_data["latitude"]
-    l = pulsar_data["longitude"]
-    alos_model = alos_from_pulsar( distances, b, l, mus, alos_gr, parameters)
+    alos_model = None
+    if( not theta is None) :
+        parameters, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
+        b = pulsar_data["latitude"]
+        l = pulsar_data["longitude"]
+        alos_model = alos_from_pulsar( distances, b, l, mus, alos_gr, parameters)
     alos_obs = pulsar_data["alos"]
     alos_err = pulsar_data["alos error"]
 
@@ -451,7 +492,7 @@ def log_prior( theta) :
             lgalpha2 = parameters[1]
             if( np.abs(lgalpha2 - lgalpha2_0) > p2_range) :
                 return -np.inf
-    elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN :
+    elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2:
         lgrho0, lgz0 = parameters[0:2] 
         if( np.abs(lgrho0 - lgrho_midplane) > p1_range)  :
             return -np.inf
@@ -488,6 +529,14 @@ def log_prior( theta) :
         if( np.abs(dadphi-dadphi0 ) > dadphi_range) : 
             return -np.inf
         if( np.abs(lgdadz - lgdadz0) > lgdadz_range) :
+            return -np.inf
+    elif MODEL == POWER_LAW : 
+        lgalpha1, eta, zmid = parameters[0:3]
+        if( np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
+            return -np.inf
+        if( np.abs(eta - eta0) > eta_range) :
+            return -np.inf
+        if( np.abs(zmid - zmid0) > zmid_range) :
             return -np.inf
 
     #lp += -0.5*(((Vlsr - Vlsr0)/Vlsr_err)**2 + math.log(2*math.pi*Vlsr_err**2))
@@ -665,7 +714,7 @@ def run_mcmc() :
     
     return flat_samples, flat_log_prob
 
-def read_samples():
+def read_samples(filename=filename):
     reader = emcee.backends.HDFBackend(filename)
     flat_samples = reader.get_chain(discard=discard, flat=True, thin=thin)
     flat_log_prob = reader.get_log_prob(discard=discard, flat=True, thin=thin)
@@ -674,6 +723,7 @@ def read_samples():
 def get_best_fit( flat_samples, flat_log_prob, show_chi_sq_arr = True) : 
     itheta = initialize_theta( frac_random=0.)
     best_fit_theta = np.zeros(itheta.shape)
+    print(itheta.shape, flat_samples.shape)
     for i in range(best_fit_theta.size) : 
        mcmc = np.percentile(flat_samples[:, i], [50])
        best_fit_theta[i] = mcmc[0]
@@ -682,15 +732,45 @@ def get_best_fit( flat_samples, flat_log_prob, show_chi_sq_arr = True) :
     print("best fit chisq = ", chi_sq)
     if( show_chi_sq_arr) :
         print("Chi square array = ", chi_sq_arr)
-    return best_fit_theta
+    return best_fit_theta, chi_sq
 
+
+def plot_model(theta, include_labels=True, obs=True,model=True, model_label=None, logy=False) : 
+    global pulsar_data
+
+    x = range(len(pulsar_data["name"]))
+    alos_model, alos_obs, alos_err = model_and_data(theta)
+
+    if( obs) : 
+        if( logy) :
+            pl.errorbar(x,np.abs(alos_obs), yerr=alos_err, fmt="o",alpha=0.25,c='black',label=r"$a_{\rm los, obs}$")
+        else : 
+            pl.errorbar(x,alos_obs, yerr=alos_err, fmt="o",alpha=0.25,c='black',label=r"$a_{\rm los, obs}$")
+
+    if( model) : 
+
+        if( model_label is None) :
+            model_label = r"$a_{\rm los, mod}$"
+        if( logy):
+            pl.scatter(x,np.abs(alos_model), s=8, alpha=1,label=model_label)
+        else : 
+            pl.scatter(x,alos_model, s=8, alpha=1,label=model_label)
+
+    if( include_labels) : 
+        names = np.array(pulsar_data["name"])
+        pl.ylabel(r"$|a_{\rm los}|\,[{\rm cm\,s}^{-2}]$")
+        pl.xticks(range(len(names)), labels=names, rotation="vertical")
+        if(logy) : 
+            pl.ylim(1e-11,1e-6)
+            pl.yscale('log')
+        #pl.xscale('log')
+        pl.legend(loc="best")
 
 def make_corner_plot(flat_samples, flat_log_prob) :
     global pulsar_data
-    import matplotlib.pyplot as pl
     import corner
     
-    best_fit_theta = get_best_fit( flat_samples, flat_log_prob)    
+    best_fit_theta, _ = get_best_fit( flat_samples, flat_log_prob)    
 
     if number_parameters > 0 : 
 
@@ -699,7 +779,7 @@ def make_corner_plot(flat_samples, flat_log_prob) :
         for i in range(number_parameters) : 
             labels.append("p{0} = ".format(i))
         #labels = [r"$\log(Mh)$",r"$\log(a)$", r"$\log(rho0)$", r"$\log(z0)$", r"$V_{\rm lsr}$"]
-        if MODEL == EXPONENTIAL or MODEL == GAUSSIAN : 
+        if MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2: 
             labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
             flat_samples[:,0] -= math.log10(2e33/pc**3)
             flat_samples[:,1] -= math.log10(pc)
@@ -712,20 +792,11 @@ def make_corner_plot(flat_samples, flat_log_prob) :
             txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
             print( "{0} = {1} {2} {3}".format(labels[i], mcmc[1], q[0], q[1]))
 
-
-    alos_model, alos_obs, alos_err = model_and_data(best_fit_theta)
+    pl.clf()
+    plot_model(best_fit_theta)
     #print(alos_model)
     #print(alos_obs)
     #print(alos_err)
-    pl.clf()
-    d = best_fit_theta[number_parameters:number_parameters+len(alos_model)]
-    b = pulsar_data["latitude"]
-
-    z = d * np.sin(b*np.pi/180.)  + zsun/kpctocm
-    x = z
-    x = range(alos_obs.size)
-    pl.errorbar(x,alos_obs, yerr=alos_err, fmt=".",alpha=0.5,label=r"$a_{\rm los, obs}$")
-    pl.scatter(x,alos_model, c='red', s=2, alpha=1,label=r"$a_{\rm los, mod}$")
 
     # inds = np.random.randint(len(flat_samples), size=1000)
 
@@ -734,14 +805,50 @@ def make_corner_plot(flat_samples, flat_log_prob) :
     #     alos_model, alos_obs, alos_err = model_and_data(best_fit_theta)
     #     pl.scatter(range(alos_model.size), alos_model, c='red', s=2, alpha=0.5)
 
-    names = np.array(pulsar_data["name"])
-    #pl.ylim(3e-10,1e-6)
-    pl.ylabel(r"$|a_{\rm los,obs}|\,[{\rm cm\,s}^{-2}]$")
-    pl.xticks(range(alos_model.size), labels=names, rotation="vertical")
-    #pl.yscale('log')
-    #pl.xscale('log')
-    pl.legend(loc="best")
     pl.savefig("test.pdf")
+
+def run_model() :
+    initialize_model( MODEL)
+    read_pulsar_data()
+    flat_samples = None
+    if( args.load_previous) :
+        flat_samples, flat_log_prob = read_samples(filename)
+    else : 
+        flat_samples, flat_log_prob = run_mcmc()
+
+    make_corner_plot( flat_samples, flat_log_prob)
+
+def run_compilation() : 
+    models = [QUILLEN, SECH2, EXPONENTIAL, MWpot, LOCAL]
+    files = ["quillen.h5", "sech2.h5", "exp.h5", "mw2014.h5", "local.h5"]
+    labels = ["Quillen", r"${\rm sech}^2(z/h_z)$", r"$\exp(-|z|/h_z)$", "MWP2014", "local"]
+
+    #models = [QUILLEN, LOCAL]
+    #files = ["quillen.h5", "local.h5"]
+    #labels = ["Quillen", "local"]
+    read_pulsar_data()
+
+    plot_model(None, include_labels=False, obs=True, model=False)
+
+    for model, f, label in zip(models, files, labels) :
+        initialize_model(model=model)
+
+        flat_samples, flat_log_prob = read_samples(f)
+        
+        theta, chisq = get_best_fit( flat_samples, flat_log_prob)
+        
+        for i in range(number_parameters):
+            mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
+            q = np.diff(mcmc)
+            txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
+            print( "{0} = {1} {2} {3}".format("p{0}".format(i), mcmc[1], q[0], q[1]))
+ 
+        plot_model(theta, include_labels=False, obs=False, model=True, model_label=r"{0}: $\chi^2 = {1:.1f}$".format(label, chisq))
+
+    plot_model(None, include_labels=True, obs=False, model=False)
+    pl.tight_layout()
+    pl.savefig("test.pdf")
+
 
 import argparse
 parser = argparse.ArgumentParser(description='Run calibration')
@@ -753,23 +860,21 @@ parser.add_argument('--multi', action="store_true",
                     default=None,
                     help="use multiprocessing")
 parser.add_argument('--num_procs', type=int, default=0, help="set number of processes to use for multiprocessing")
-
+parser.add_argument('--model', type=int, default=DEFAULT_MODEL, help="set model to be run")
+parser.add_argument('--compilation', action="store_true", default=False, help="run the compilation")
 args = parser.parse_args()
 
 if not args.o is None :
     filename = args.o
 
 multithread = args.multi
+MODEL = args.model
 
 if( args.num_procs > 0) : 
     multithread = True
     processes = args.num_procs
 
-read_pulsar_data()
-flat_samples = None
-if( args.load_previous) :
-    flat_samples, flat_log_prob = read_samples()
-else : 
-    flat_samples, flat_log_prob = run_mcmc()
-
-make_corner_plot( flat_samples, flat_log_prob)
+if( args.compilation) : 
+    run_compilation()
+else :
+    run_model()
