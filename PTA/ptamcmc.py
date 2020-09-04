@@ -19,13 +19,14 @@ from galpy.potential import evaluatezforces
 from galpy.util import bovy_conversion
 from galpy.potential import DehnenBarPotential
 from galpy.potential import HernquistPotential
+import matplotlib.pyplot as pl
 
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 10000
+iterations = 12000
 thin = 200
-discard = 1000
+discard =3000
 unique_name = True
 
 TINY_GR = 1e-20
@@ -38,7 +39,8 @@ ppta = [4,5,6,7,8,9]
 epta = [10,11,12,13]
 best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11]
 
-use_other_distance = [5, 7, 9]
+#use_other_distance = [5, 7, 9]
+use_other_distance = [5,7,9,14,17]
 #best_pulsars = nanograv
 pulsars_number = None
 pulsar_data = None
@@ -51,13 +53,20 @@ MWpot = 3
 Hernquistfix = 4
 HERNQUIST = 5
 HALODISK = 6
+QUILLENBETA = 7
+BULGE = 8
 
-number_parameters = 1 # number of parameters for the galactic model
+number_parameters = 0 # number of parameters for the galactic model
 
-MODEL = QUILLEN
+MODEL = Hernquistfix
+
+if MODEL == QUILLEN or MODEL == MWpot or MODEL == Hernquistfix:
+    chainplot = 0
 
 if MODEL == QUILLEN : 
     number_parameters = 1
+elif MODEL == QUILLENBETA:
+    number_parameters = 2  ## this is alpha1 and beta only 
 elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN :
     number_parameters = 2
 elif MODEL == MWpot :
@@ -68,6 +77,8 @@ elif MODEL == HERNQUIST:
     number_parameters = 2
 elif MODEL == HALODISK: 
     number_parameters = 4
+elif MODEL == BULGE:
+    number_parameters = 2
 
 print ("MODEL=",MODEL)
 
@@ -86,11 +97,15 @@ c = 3e10  ## in cm
 #Quillen model constants
 alpha1_0 = 4e-30
 alpha2_0 = -1e-51
+beta0 = 0.
+#beta0 = 0.
+brange = 0.5 ## difference between Li et al. 2019, Mroz et al. 2019 and beta = -0.05 adopted in Quillen
 lgalpha1_0 = math.log10( alpha1_0)
 lgalpha2_0 = math.log10( -alpha2_0)
 
 p1_range = 5
 p2_range = 2
+Mhrange = 0.86169 ## from Xue et al. 2008 and Boylan-Kolchin et al. 2013
 
 # exponential or gaussian model constants
 rho_midplane = 0.1 # solar mass per cubic parsec
@@ -113,9 +128,10 @@ mas_per_year_to_as_per_sec = 1e-3/3.15e7
 
 Vlsr_quillen = 233.e5 ## from Schonrich et al. 2010 in cm/s
 
-Vlsr = Vlsr_quillen#
 Vlsr = 255.2*1e5
-Vlsr_err = 5.1*1e5
+#Vlsr = Vlsr_quillen
+Vlsr0 = Vlsr_quillen
+Vlsr_err = 1.4*1e5  ## reflecting Schonrich et al. 2010 
 G = 6.67e-8
 
 def accHernquistfix(x,y,z):
@@ -142,7 +158,6 @@ def accMWpot(x,y,z):
     ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(220.,8.122)
     ar = ar*1.e5/(1.e6*3.15e7)
     az = -az*1.e5/(1.e6*3.15e7)
-    ar = 255e5**2/(r*kpctocm)
 
     ax = -ar*x/r
     ay = -ar*y/r
@@ -166,16 +181,34 @@ def acc_exp(x,y,z,rho0,z0, Vlsr) :
     ay = -ar*y/r
     return ax,ay,az
 
+def acc_quillenbeta(x,y,z,lgalpha1,beta,Vlsr):
+    r = np.sqrt(x*x + y*y)
+    alpha1 = 1e1**lgalpha1
+    alpha2 = 0.
+
+    az = -alpha1*z - alpha2*(z*z)*np.sign(z)
+    ar = Vlsr*Vlsr/r
+
+    if (number_parameters > 1):
+        ar = (Vlsr**2)*((1./rsun)**(2.*beta))*(r**((2.*beta)-1.))
+
+    ax = -ar*x/r
+    ay = -ar*y/r
+
+    return ax,ay,az     
+
 def acc_quillen(x,y,z,lgalpha1, lgalpha2, Vlsr) :
     r = np.sqrt(x*x + y*y) 
     alpha1 = 1e1**lgalpha1
     alpha2 = 0.
-    if number_parameters > 1 : 
+    
+    if (number_parameters > 1) : 
         alpha2 = -1e1**lgalpha2
     az = -alpha1*z - alpha2*(z*z)*np.sign(z)
     ar = Vlsr*Vlsr/r
     ax = -ar*x/r
     ay = -ar*y/r
+
     return ax,ay,az
 
 def accHernquist(x,y,z,lgMh,lga):
@@ -201,11 +234,13 @@ def accHernquistplusdisk(x,y,z,lgMh,lga,rho0,z0, Vlsr):
     azdisk = 4*np.pi*G*rho0*z0*(1.-np.exp(-np.abs(z)/z0))*np.sign(z)
     ardisk = Vlsr*Vlsr/rr
 
+    arh = arh*(rr/r)
+
 ## is this correct? (r = sqrt(x^2+y^2) for disk but not for sphere) 
     ar = arh + ardisk
     az = -azh - azdisk 
-    ax = -ar*x/r
-    ay = -ar*y/r
+    ax = -ar*x/rr
+    ay = -ar*y/rr
 
     return ax,ay,az
 
@@ -220,6 +255,13 @@ def alos(x,y,z,parameters):
             lgalpha2 = parameters[1]
         axsun, aysun, azsun = acc_quillen(xsun,ysun,zsun, lgalpha1, lgalpha2, Vlsr)
         ax, ay, az = acc_quillen(x,y,z,lgalpha1,lgalpha2, Vlsr)
+    elif MODEL == QUILLENBETA : 
+        lgalpha1, beta = parameters[0],-np.inf
+        if(number_parameters > 1):
+            beta = parameters[1]
+        axsun, aysun, azsun = acc_quillenbeta(xsun,ysun,zsun, lgalpha1, beta, Vlsr)
+        ax, ay, az = acc_quillenbeta(x,y,z,lgalpha1,beta, Vlsr)   
+
     elif MODEL == EXPONENTIAL :
         lgrho0, lgz0 = parameters[0:2]
         rho0 = 1e1**lgrho0
@@ -303,6 +345,14 @@ def initialize_theta( frac_random=1) :
         theta[0] = lgalpha1
         if(number_parameters > 1) :
             theta[1] = lgalpha2
+
+    elif MODEL == QUILLENBETA : 
+        lgalpha1 = lgalpha1_0 + 0.1*np.random.randn(1)[0]*frac_random
+        beta = beta0 - 0.1*np.random.randn(1)[0]*frac_random
+        theta[0] = lgalpha1
+        if(number_parameters > 1):
+            theta[1] = beta
+
     elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN: 
         lgrho0 = lgrho_midplane + 0.1*np.random.randn(1)[0]*frac_random
         lgz0 = lgscale_height + 0.1*np.random.randn(1)[0]*frac_random
@@ -358,7 +408,8 @@ def log_likelihood( theta, return_chisq = False) :
     alos_model, alos_obs, alos_err = model_and_data( theta)
     if( not return_chisq) :
         ll = 0.5*np.sum( -((alos_obs - alos_model)/alos_err)**2 - np.log(2*np.pi*alos_err*alos_err))
-        ll = 0.5*np.sum( -((alos_obs - alos_model)/alos_err)**2)# - np.log(2*np.pi*alos_err*alos_err))
+        ll = 0.5*np.sum( -((alos_obs - alos_model)/alos_err)**2) # - np.log(2*np.pi*alos_err*alos_err))
+##        print ("ll=",ll)
 
         return ll
     else :
@@ -383,10 +434,20 @@ def log_prior( theta) :
         lgalpha1 = parameters[0]
         if( np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
             return -np.inf
-        if(number_parameters > 1) :
+        if(number_parameters > 1) :     
             lgalpha2 = parameters[1]
             if( np.abs(lgalpha2 - lgalpha2_0) > p2_range) :
                 return -np.inf
+
+    elif MODEL == QUILLENBETA:
+        lgalpha1 = parameters[0]
+        if(np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
+            return -np.inf
+        if(number_parameters > 1):
+            beta = parameters[1]
+            if( np.abs(beta - beta0) > brange) :
+                return -np.inf
+            
     elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN :
         lgrho0, lgz0 = parameters[0:2] 
         if( np.abs(lgrho0 - lgrho_midplane) > p1_range)  :
@@ -395,7 +456,7 @@ def log_prior( theta) :
             return -np.inf
     elif MODEL == HERNQUIST:
         lgMh, lga = parameters[0:2]
-        if (np.abs(lgMh - lgMh_0) > p1_range) :
+        if (np.abs(lgMh - lgMh_0) > Mhrange) :
             return -np.inf
         #lp+=-0.5*((lga-lga_0)/p2_range)**2
         if (np.abs(lga - lga_0) > p2_range):
@@ -539,9 +600,40 @@ def run_samples( sampler, pos, iterations, min_steps=100, tau_multipler=100) :
         converged = criteria1 and criteria2
 
         if(converged or current_iteration >= iterations) : 
+#        if (current_iteration >= iterations):  ## to avoid this
             stop = True
         print("step: {0:07d}, mean tau: {1:5.2e}, conv. crit: {3}, steps to conv: {4:5.2e}, it/s: {5:5.2e}".format(current_iteration, np.mean(tau), criteria1, criteria2, np.max(tau_multipler*tau), nstep/(end-start)))
         old_tau = tau
+    
+    if MODEL == HERNQUIST:
+        labels = ["Mh","a"]
+    elif MODEL == QUILLEN:
+        labels = ["alpha1"]
+        if number_parameters > 1:
+            labels = ["alpha1","alpha2"]
+    elif MODEL == QUILLENBETA:
+        if number_parameters > 1:
+            labels = ["alpha1","beta"]
+    elif MODEL == EXPONENTIAL or GAUSSIAN:
+        labels = ["rho0","z0"]
+    elif MODEL == HALODISK: 
+        labels == ["Mh","a","rho0","z0"]
+
+    fig, axes = pl.subplots(number_parameters, figsize=(10, 7), sharex=True)
+    samples = sampler.get_chain()    
+
+    if not (chainplot == 0):
+        for i in range(number_parameters):
+            ax = axes[i]
+            ax.plot(samples[:, :, i], "k", alpha=0.3)
+            ax.set_xlim(0, len(samples))
+            ax.set_ylabel(labels[i])
+            ax.yaxis.set_label_coords(-0.1, 0.5)
+
+            axes[-1].set_xlabel("step number")
+            pl.savefig("chain.png")
+    pl.clf()    
+
     return autocorr
 
 
@@ -605,12 +697,16 @@ def make_corner_plot(flat_samples) :
 
         pl.clf()
         labels = [r"$\log(Mh)$",r"$\log(a)$", r"$\log(rho0)$", r"$\log(z0)$", r"$V_{\rm lsr}$"]
-        if MODEL == EXPONENTIAL or MODEL == GAUSSIAN : 
+        if MODEL == QUILLEN:
+            labels = [r"$\alpha1$",r"$\alpha2$"]
+        elif MODEL == QUILLENBETA:
+            labels = [r"$\alpha1$",r"$beta$"]
+        elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN : 
             labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
             flat_samples[:,0] -= math.log10(2e33/pc**3)
             flat_samples[:,1] -= math.log10(pc)
         fig = corner.corner( flat_samples[:,0:number_parameters], labels=labels[0:number_parameters],truths=best_fit_theta[0:number_parameters])
-        pl.savefig("corner.pdf")
+        pl.savefig("corner.png")
 
         for i in range(number_parameters):
             mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
@@ -620,10 +716,14 @@ def make_corner_plot(flat_samples) :
 
     print("best fit chisq = ", log_likelihood( best_fit_theta, return_chisq =True))
 
+    lout = log_likelihood( best_fit_theta, return_chisq =False)
+    aic = -2.*lout + 2.*number_parameters
+    print ("AIC=",aic)
+
     alos_model, alos_obs, alos_err = model_and_data(best_fit_theta)
-    #print(alos_model)
-    #print(alos_obs)
-    #print(alos_err)
+    print(alos_model)
+    print(alos_obs)
+    print(alos_err)
     pl.clf()
     d = best_fit_theta[number_parameters:number_parameters+len(alos_model)]
     b = pulsar_data["latitude"]
@@ -648,7 +748,7 @@ def make_corner_plot(flat_samples) :
     #pl.yscale('log')
     #pl.xscale('log')
     pl.legend(loc="best")
-    pl.savefig("test.pdf")
+    pl.savefig("test.png")
 
 import argparse
 parser = argparse.ArgumentParser(description='Run calibration')
@@ -680,3 +780,5 @@ else :
     flat_samples = run_mcmc()
 
 make_corner_plot( flat_samples)
+
+
