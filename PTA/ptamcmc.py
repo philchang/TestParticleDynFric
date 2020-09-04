@@ -306,7 +306,7 @@ def accHernquistplusdisk(x,y,z,lgMh,lga,rho0,z0, Vlsr):
     azdisk = 4*np.pi*G*rho0*z0*(1.-np.exp(-np.abs(z)/z0))*np.sign(z)
     ardisk = Vlsr*Vlsr/rr
 
-    arh = arh*(rr/r)
+    arh *= (rr/r)
 
 ## is this correct? (r = sqrt(x^2+y^2) for disk but not for sphere) 
     ar = arh + ardisk
@@ -740,20 +740,20 @@ def run_samples( sampler, pos, iterations, min_steps=1000, tau_multipler=100) :
     elif MODEL == HALODISK: 
         labels == ["Mh","a","rho0","z0"]
 
-    fig, axes = pl.subplots(number_parameters, figsize=(10, 7), sharex=True)
-    samples = sampler.get_chain()    
+    # fig, axes = pl.subplots(number_parameters, figsize=(10, 7), sharex=True)
+    # samples = sampler.get_chain()    
 
-    if not (chainplot == 0):
-        for i in range(number_parameters):
-            ax = axes[i]
-            ax.plot(samples[:, :, i], "k", alpha=0.3)
-            ax.set_xlim(0, len(samples))
-            ax.set_ylabel(labels[i])
-            ax.yaxis.set_label_coords(-0.1, 0.5)
+    # if not (chainplot == 0):
+    #     for i in range(number_parameters):
+    #         ax = axes[i]
+    #         ax.plot(samples[:, :, i], "k", alpha=0.3)
+    #         ax.set_xlim(0, len(samples))
+    #         ax.set_ylabel(labels[i])
+    #         ax.yaxis.set_label_coords(-0.1, 0.5)
 
-            axes[-1].set_xlabel("step number")
-            pl.savefig("chain.png")
-    pl.clf()    
+    #         axes[-1].set_xlabel("step number")
+    #         pl.savefig("chain.png")
+    # pl.clf()    
 
     return autocorr
 
@@ -908,10 +908,10 @@ def run_model() :
     make_corner_plot( flat_samples, flat_log_prob)
 
 def run_compilation() : 
-    models = [QUILLEN, SECH2, EXPONENTIAL, MWpot, LOCAL, POWER_LAW]
+    models = [QUILLEN, QUILLENBETA, EXPONENTIAL, MWpot, LOCAL, Hernquistfix, HALODISK]
     rootdir = "../../../../Code/test-PTA"
-    files = ["quillen.h5", "sech2.h5", "exp.h5", "mw2014.h5", "local.h5", "powerlaw.h5"]
-    labels = ["Quillen", r"${\rm sech}^2(z/h_z)$", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Quillen + offet"]
+    files = ["quillen.h5", "quillen_beta.h5", "exp.h5", "mw2014.h5", "local.h5", "hernquist_fixed.h5", "halodisk.h5"]
+    labels = ["Quillen", r"Quillen + $\beta$", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Hernquist", "Hernquist+disk"]
 
     #models = [QUILLEN, LOCAL]
     #files = ["quillen.h5", "local.h5"]
