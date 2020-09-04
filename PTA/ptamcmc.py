@@ -82,7 +82,7 @@ def initialize_model( model=MODEL) :
     elif model == LOCAL : 
         number_parameters = 3
     if model == POWER_LAW : 
-        number_parameters = 3
+        number_parameters = 2
 
     MODEL = model
     print ("MODEL=",MODEL)
@@ -156,9 +156,9 @@ lgdadz_range = p1_range
 
 # power law
 eta0 = 0
-eta_range = 0.5
+eta_range = 0.9
 zmid0 = 0
-zmid_range = 0.5
+zmid_range = 0.1
 
 def accHernquistfix(x,y,z):
     x = x/kpctocm
@@ -339,7 +339,8 @@ def alos(x,y,z,parameters):
         axsun, aysun, azsun = acc_local_expansion( xsun, ysun, zsun, dadr, dadphi, dadz) 
         ax, ay, az = acc_local_expansion( x, y, z, dadr, dadphi, dadz) 
     if MODEL == POWER_LAW : 
-        lgalpha1, eta, zmid = parameters[0:3]
+        lgalpha1, zmid = parameters[0:2]
+        eta = 0
         axsun, aysun, azsun = acc_power_law(xsun,ysun,zsun, lgalpha1, eta, zmid, Vlsr)
         ax, ay, az = acc_power_law(x,y,z,lgalpha1, eta, zmid, Vlsr)
     
@@ -423,8 +424,8 @@ def initialize_theta( frac_random=1) :
         theta[2] = lgdadz0 + 0.1*lgdadz_range*np.random.randn(1)[0]*frac_random
     elif MODEL == POWER_LAW : 
         theta[0] = lgalpha1_0 + 0.1*np.random.randn(1)[0]*frac_random
-        theta[1] = eta0 + 0.1*eta_range*np.random.randn(1)[0]*frac_random
-        theta[2] = zmid0 + 0.1*zmid_range*np.random.randn(1)[0]*frac_random
+        #theta[1] = eta0 + 0.1*eta_range*np.random.randn(1)[0]*frac_random
+        theta[1] = zmid0 + 0.1*zmid_range*np.random.randn(1)[0]*frac_random
 
 #    if(number_parameters > 2) :   ## CHECK THIS
 # I DON'T THINK THIS IS NEEDED
@@ -531,11 +532,11 @@ def log_prior( theta) :
         if( np.abs(lgdadz - lgdadz0) > lgdadz_range) :
             return -np.inf
     elif MODEL == POWER_LAW : 
-        lgalpha1, eta, zmid = parameters[0:3]
+        lgalpha1, zmid = parameters[0:2]
         if( np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
             return -np.inf
-        if( np.abs(eta - eta0) > eta_range) :
-            return -np.inf
+        #if( np.abs(eta - eta0) > eta_range) :
+        #    return -np.inf
         if( np.abs(zmid - zmid0) > zmid_range) :
             return -np.inf
 
@@ -819,9 +820,10 @@ def run_model() :
     make_corner_plot( flat_samples, flat_log_prob)
 
 def run_compilation() : 
-    models = [QUILLEN, SECH2, EXPONENTIAL, MWpot, LOCAL]
-    files = ["quillen.h5", "sech2.h5", "exp.h5", "mw2014.h5", "local.h5"]
-    labels = ["Quillen", r"${\rm sech}^2(z/h_z)$", r"$\exp(-|z|/h_z)$", "MWP2014", "local"]
+    models = [QUILLEN, SECH2, EXPONENTIAL, MWpot, LOCAL, POWER_LAW]
+    rootdir = "../../../../Code/test-PTA"
+    files = ["quillen.h5", "sech2.h5", "exp.h5", "mw2014.h5", "local.h5", "powerlaw.h5"]
+    labels = ["Quillen", r"${\rm sech}^2(z/h_z)$", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Quillen + offet"]
 
     #models = [QUILLEN, LOCAL]
     #files = ["quillen.h5", "local.h5"]
@@ -832,8 +834,8 @@ def run_compilation() :
 
     for model, f, label in zip(models, files, labels) :
         initialize_model(model=model)
-
-        flat_samples, flat_log_prob = read_samples(f)
+        fname = "{0}/{1}".format(rootdir, f)
+        flat_samples, flat_log_prob = read_samples(fname)
         
         theta, chisq = get_best_fit( flat_samples, flat_log_prob)
         
