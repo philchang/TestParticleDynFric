@@ -29,9 +29,9 @@ import matplotlib.pyplot as pl
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 20000
-thin = 500
-discard =3000
+iterations = 10000
+thin = 200
+discard =1000
 unique_name = True
 
 TINY_GR = 1e-20
@@ -66,6 +66,7 @@ POWER_LAW = 9
 QUILLENBETA = 10
 BULGE = 11
 CROSS = 12
+LOGARITHMIC = 13
 
 number_parameters = 0 # number of parameters for the galactic model
 
@@ -96,6 +97,8 @@ def initialize_model( model=MODEL) :
         number_parameters = 2
     elif MODEL == CROSS:
         number_parameters = 2
+    elif MODEL == LOGARITHMIC:
+        number_parameters = 2
 
     MODEL = model
     print ("MODEL=",MODEL)
@@ -124,6 +127,9 @@ lgalpha1_0 = math.log10( alpha1_0)
 lgalpha2_0 = math.log10( -alpha2_0)
 gamma0 = 0.  ## vc(z) term 
 gamma_range = 0.5
+
+lg_q0 = -0.5
+lg_q_range = 0.49
 
 
 p1_range = 3
@@ -276,6 +282,19 @@ def acc_cross(x,y,z,lgalpha1,gamma,Vlsr):
     ay = -ar*y/r
     return ax,ay,az
 
+def acc_logarithmic(x,y,z,lgalpha1, lgq,Vlsr):
+    r = np.sqrt(x*x + y*y)
+    q = 1e1**lgq
+    alpha1 = 1e1**lgalpha1
+    Vlsr2 = Vlsr*Vlsr
+    q2 = q*q
+    rsun2 = rsun*rsun
+    az = -alpha1*z -(Vlsr2)/(q2*rsun2)*z*(1.-2.*np.log(r/rsun))
+    ar = -(Vlsr2/r)*(1.-z*z/(q2*rsun2))
+    ax = ar*x/r
+    ay = ar*y/r
+    return ax,ay,az
+
 def acc_power_law(x,y,z,lgalpha1, eta, zmid, Vlsr) :
     r = np.sqrt(x*x + y*y) 
     alpha1 = 1e1**lgalpha1
@@ -354,6 +373,10 @@ def alos(x,y,z,parameters):
         lgalpha1,gamma = parameters[0], parameters[1]
         axsun, aysun, azsun = acc_cross(xsun,ysun,zsun, lgalpha1, gamma, Vlsr)
         ax, ay, az = acc_cross(x,y,z,lgalpha1,gamma, Vlsr)
+    elif MODEL == LOGARITHMIC:
+        lgalpha1, lgq = parameters[0], parameters[1]
+        axsun, aysun, azsun = acc_logarithmic(xsun,ysun,zsun, lgalpha1, lgq, Vlsr)
+        ax, ay, az = acc_logarithmic(x,y,z, lgalpha1, lgq, Vlsr)
     elif MODEL == EXPONENTIAL or MODEL == SECH2:
         lgrho0, lgz0 = parameters[0:2]
         rho0 = 1e1**lgrho0
@@ -464,6 +487,11 @@ def initialize_theta( frac_random=1) :
         gamma = gamma0 + 0.1*p2_range*np.random.randn(1)[0]*frac_random
         theta[0]=lgalpha1
         theta[1]=gamma
+    elif MODEL == LOGARITHMIC:
+        lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
+        lgq = lg_q0 + 0.1*lg_q_range*np.random.randn(1)[0]*frac_random
+        theta[0]=lgalpha1
+        theta[1]=lgq
     elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2: 
         lgrho0 = lgrho_midplane + 0.1*p1_range*np.random.randn(1)[0]*frac_random
         lgz0 = lgscale_height + 0.1*p1_range*np.random.randn(1)[0]*frac_random
@@ -572,6 +600,19 @@ def log_prior( theta) :
             beta = parameters[1]
             if( np.abs(beta - beta0) > brange) :
                 return -np.inf
+    elif MODEL == CROSS:
+        lgalpha1 = parameters[0]
+        if(np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
+            return -np.inf
+        gamma=parameters[1]
+        if( np.abs(gamma - gamma0) > grange) :
+                return -np.inf
+    elif MODEL == LOGARITHMIC : 
+        lgalpha1, lgq = parameters[0], parameters[1]
+        if(np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
+            return -np.inf
+        if(np.abs(lgq - lg_q0) > lg_q_range)  :
+            return -np.inf
     elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2:
         lgrho0, lgz0 = parameters[0:2] 
         if( np.abs(lgrho0 - lgrho_midplane) > p1_range)  :
@@ -726,7 +767,7 @@ def read_pulsar_data() :
                     "alos_gr" : alos_gr_arr, "alos_gr_err" : alos_gr_err, \
                     "alos" : alos_arr, "alos error" : alos_err, "number pulsars" : len(name_arr)}
 
-def run_samples( sampler, pos, iterations, min_steps=1000, tau_multipler=100) : 
+def run_samples( sampler, pos, iterations, min_steps=20000, tau_multipler=100) : 
     import time
     current_iteration = 0
     stop = False
@@ -763,25 +804,29 @@ def run_samples( sampler, pos, iterations, min_steps=1000, tau_multipler=100) :
     elif MODEL == QUILLENBETA:
         if number_parameters > 1:
             labels = ["alpha1","beta"]
+    elif MODEL == CROSS:
+        labels = ["alpha1","gamma"]
+    elif MODEL == LOGARITHMIC:
+        labels = ["lg_alpha1", "lg_q"]
     elif MODEL == EXPONENTIAL or GAUSSIAN:
         labels = ["rho0","z0"]
     elif MODEL == HALODISK: 
         labels == ["Mh","a","rho0","z0"]
 
-    # fig, axes = pl.subplots(number_parameters, figsize=(10, 7), sharex=True)
-    # samples = sampler.get_chain()    
+    fig, axes = pl.subplots(number_parameters, figsize=(10, 7), sharex=True)
+    samples = sampler.get_chain()    
 
-    # if not (chainplot == 0):
-    #     for i in range(number_parameters):
-    #         ax = axes[i]
-    #         ax.plot(samples[:, :, i], "k", alpha=0.3)
-    #         ax.set_xlim(0, len(samples))
-    #         ax.set_ylabel(labels[i])
-    #         ax.yaxis.set_label_coords(-0.1, 0.5)
+    if not (chainplot == 0):
+        for i in range(number_parameters):
+            ax = axes[i]
+            ax.plot(samples[:, :, i], "k", alpha=0.3)
+            ax.set_xlim(0, len(samples))
+            ax.set_ylabel(labels[i])
+            ax.yaxis.set_label_coords(-0.1, 0.5)
 
-    #         axes[-1].set_xlabel("step number")
-    #         pl.savefig("chain.png")
-    # pl.clf()    
+            axes[-1].set_xlabel("step number")
+            pl.savefig("chain.png")
+    pl.clf()    
 
     return autocorr
 
@@ -790,7 +835,7 @@ def run_mcmc() :
     import time
     itheta = initialize_theta( frac_random=0.)
 
-    nwalkers = 150
+    nwalkers = 100
     ndim = itheta.size
 
     pos = np.zeros( [nwalkers,ndim])
@@ -898,7 +943,9 @@ def make_corner_plot(flat_samples, flat_log_prob) :
             labels = [r"$\alpha1$",r"$beta$"]
         elif MODEL == CROSS:
             labels = [r"$\alpha1$",r"$\gamma$"]
-        if MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2: 
+        elif MODEL == LOGARITHMIC:
+            labels = [r"$\ln\alpha_1$",r"$\ln q$"]
+        elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2: 
             labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
             flat_samples[:,0] -= math.log10(2e33/pc**3)
             flat_samples[:,1] -= math.log10(pc)
