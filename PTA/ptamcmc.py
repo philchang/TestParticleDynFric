@@ -29,8 +29,8 @@ import matplotlib.pyplot as pl
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 12000
-thin = 200
+iterations = 20000
+thin = 500
 discard =3000
 unique_name = True
 
@@ -42,9 +42,11 @@ excluded_pulsars = None
 nanograv = [0,1,2,3]
 ppta = [4,5,6,7,8,9]
 epta = [10,11,12,13]
-best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11]
+#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11]
+#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,14,15,16,17]
+best_pulsars = [0, 2, 3, 4, 5, 6, 9, 10, 11,12,14,15,16,17]
 
-#use_other_distance = [5, 7, 9]
+use_other_distance = [5, 7, 9]
 use_other_distance = [5,7,9,14,17]
 #best_pulsars = nanograv
 pulsars_number = None
@@ -63,6 +65,7 @@ SECH2 = 8
 POWER_LAW = 9
 QUILLENBETA = 10
 BULGE = 11
+CROSS = 12
 
 number_parameters = 0 # number of parameters for the galactic model
 
@@ -72,7 +75,7 @@ MODEL = DEFAULT_MODEL
 def initialize_model( model=MODEL) : 
     global number_parameters, MODEL
     if model == QUILLEN : 
-        number_parameters = 2
+        number_parameters = 1
     elif MODEL == QUILLENBETA:
         number_parameters = 2  ## this is alpha1 and beta only 
     elif model == EXPONENTIAL or model == GAUSSIAN or model == SECH2:
@@ -87,9 +90,11 @@ def initialize_model( model=MODEL) :
         number_parameters = 4
     elif model == LOCAL : 
         number_parameters = 3
-    if model == POWER_LAW : 
+    elif model == POWER_LAW : 
         number_parameters = 2
     elif MODEL == BULGE:
+        number_parameters = 2
+    elif MODEL == CROSS:
         number_parameters = 2
 
     MODEL = model
@@ -117,6 +122,9 @@ beta0 = 0.
 brange = 0.5 ## difference between Li et al. 2019, Mroz et al. 2019 and beta = -0.05 adopted in Quillen
 lgalpha1_0 = math.log10( alpha1_0)
 lgalpha2_0 = math.log10( -alpha2_0)
+gamma0 = 0.  ## vc(z) term 
+gamma_range = 0.5
+
 
 p1_range = 3
 p2_range = 2
@@ -259,6 +267,15 @@ def acc_quillen(x,y,z,lgalpha1, lgalpha2, Vlsr) :
 
     return ax,ay,az
 
+def acc_cross(x,y,z,lgalpha1,gamma,Vlsr):
+    r = np.sqrt(x*x + y*y)
+    alpha1 = 1e1**lgalpha1
+    az = -alpha1*z -(Vlsr**2*np.log(r/rsun)*2.*gamma*(1./zsun**2)*(z/np.sign(z)))
+    ar = (Vlsr**2/r)*(1.+gamma*((np.abs(z/zsun))**2))
+    ax = -ar*x/r
+    ay = -ar*y/r
+    return ax,ay,az
+
 def acc_power_law(x,y,z,lgalpha1, eta, zmid, Vlsr) :
     r = np.sqrt(x*x + y*y) 
     alpha1 = 1e1**lgalpha1
@@ -333,6 +350,10 @@ def alos(x,y,z,parameters):
             beta = parameters[1]
         axsun, aysun, azsun = acc_quillenbeta(xsun,ysun,zsun, lgalpha1, beta, Vlsr)
         ax, ay, az = acc_quillenbeta(x,y,z,lgalpha1,beta, Vlsr)   
+    elif MODEL == CROSS:
+        lgalpha1,gamma = parameters[0], parameters[1]
+        axsun, aysun, azsun = acc_cross(xsun,ysun,zsun, lgalpha1, gamma, Vlsr)
+        ax, ay, az = acc_cross(x,y,z,lgalpha1,gamma, Vlsr)
     elif MODEL == EXPONENTIAL or MODEL == SECH2:
         lgrho0, lgz0 = parameters[0:2]
         rho0 = 1e1**lgrho0
@@ -427,20 +448,25 @@ def initialize_theta( frac_random=1) :
     mu_err = pulsar_data["mu error"]
     theta = np.zeros(number_parameters+3*number_pulsars)
     if MODEL == QUILLEN : 
-        lgalpha1 = lgalpha1_0 + 0.1*np.random.randn(1)[0]*frac_random
-        lgalpha2 = lgalpha2_0 - 0.1*np.random.randn(1)[0]*frac_random
+        lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
+        lgalpha2 = lgalpha2_0 - 0.1*p2_range*np.random.randn(1)[0]*frac_random
         theta[0] = lgalpha1
         if(number_parameters > 1) :
             theta[1] = lgalpha2
     elif MODEL == QUILLENBETA : 
-        lgalpha1 = lgalpha1_0 + 0.1*np.random.randn(1)[0]*frac_random
-        beta = beta0 - 0.1*np.random.randn(1)[0]*frac_random
+        lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
+        beta = beta0 - 0.1*p2_range*np.random.randn(1)[0]*frac_random
         theta[0] = lgalpha1
         if(number_parameters > 1):
             theta[1] = beta
+    elif MODEL == CROSS:
+        lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
+        gamma = gamma0 + 0.1*p2_range*np.random.randn(1)[0]*frac_random
+        theta[0]=lgalpha1
+        theta[1]=gamma
     elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2: 
-        lgrho0 = lgrho_midplane + 0.1*np.random.randn(1)[0]*frac_random
-        lgz0 = lgscale_height + 0.1*np.random.randn(1)[0]*frac_random
+        lgrho0 = lgrho_midplane + 0.1*p1_range*np.random.randn(1)[0]*frac_random
+        lgz0 = lgscale_height + 0.1*p1_range*np.random.randn(1)[0]*frac_random
         theta[0] = lgrho0
         theta[1] = lgz0
     elif MODEL == HERNQUIST :
@@ -612,12 +638,14 @@ def read_pulsar_data() :
     import pandas as pd
 
     # import the GR corrections
-    gr_dataframe = pd.read_excel("PBDOT_GR.xls")
+#    gr_dataframe = pd.read_excel("PBDOT_GR.xls")
+    gr_dataframe = pd.read_excel("PBDOT_GR_rev.xls")
     gr_names = gr_dataframe["Pulsar Name"]
     gr_pbdot = gr_dataframe["PBDOT_GR (s/s)"]
 
     # import the data and decode
-    dataframe = pd.read_excel("PBDOT.xls") 
+#    dataframe = pd.read_excel("PBDOT.xls") 
+    dataframe = pd.read_excel("PBDOT_rev.xls")
     distances = dataframe['Parallax Distance (kpc)'] 
     names = dataframe["Pulsar Name"]
     datasets = dataframe["Dataset"]
@@ -762,7 +790,7 @@ def run_mcmc() :
     import time
     itheta = initialize_theta( frac_random=0.)
 
-    nwalkers = 100
+    nwalkers = 150
     ndim = itheta.size
 
     pos = np.zeros( [nwalkers,ndim])
@@ -868,6 +896,8 @@ def make_corner_plot(flat_samples, flat_log_prob) :
             labels = [r"$\alpha1$",r"$\alpha2$"]
         elif MODEL == QUILLENBETA:
             labels = [r"$\alpha1$",r"$beta$"]
+        elif MODEL == CROSS:
+            labels = [r"$\alpha1$",r"$\gamma$"]
         if MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2: 
             labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
             flat_samples[:,0] -= math.log10(2e33/pc**3)
@@ -908,10 +938,10 @@ def run_model() :
     make_corner_plot( flat_samples, flat_log_prob)
 
 def run_compilation() : 
-    models = [QUILLEN, QUILLENBETA, EXPONENTIAL, MWpot, LOCAL, Hernquistfix, HALODISK]
+    models = [QUILLEN, QUILLENBETA, CROSS, EXPONENTIAL, MWpot, LOCAL, Hernquistfix, HALODISK]
     rootdir = "../../../../Code/test-PTA"
-    files = ["quillen.h5", "quillen_beta.h5", "exp.h5", "mw2014.h5", "local.h5", "hernquist_fixed.h5", "halodisk.h5"]
-    labels = ["Quillen", r"Quillen + $\beta$", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Hernquist", "Hernquist+disk"]
+    files = ["quillen.h5", "quillen_beta.h5", "cross.h5", "exp.h5", "mw2014.h5", "local.h5", "hernquist_fixed.h5", "halodisk.h5"]
+    labels = ["Quillen", r"Quillen + $\beta$", "cross", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Hernquist", "Hernquist+disk"]
 
     #models = [QUILLEN, LOCAL]
     #files = ["quillen.h5", "local.h5"]
