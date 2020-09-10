@@ -29,10 +29,11 @@ import matplotlib.pyplot as pl
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 10000
-thin = 200
-discard =1000
+iterations = 20000
+thin = 400
+discard =2000
 unique_name = True
+chainplot = True
 
 TINY_GR = 1e-20
 multithread = False
@@ -276,8 +277,8 @@ def acc_quillen(x,y,z,lgalpha1, lgalpha2, Vlsr) :
 def acc_cross(x,y,z,lgalpha1,gamma,Vlsr):
     r = np.sqrt(x*x + y*y)
     alpha1 = 1e1**lgalpha1
-    az = -alpha1*z -(Vlsr**2*np.log(r/rsun)*2.*gamma*(1./zsun**2)*(z/np.sign(z)))
-    ar = (Vlsr**2/r)*(1.+gamma*((np.abs(z/zsun))**2))
+    az = -alpha1*z -(Vlsr**2*np.log(r/rsun)*2.*gamma*(1./kpctocm**2)*(z/np.sign(z)))
+    ar = (Vlsr**2/r)*(1.+gamma*((np.abs(z/kpctocm))**2))
     ax = -ar*x/r
     ay = -ar*y/r
     return ax,ay,az
@@ -484,7 +485,7 @@ def initialize_theta( frac_random=1) :
             theta[1] = beta
     elif MODEL == CROSS:
         lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
-        gamma = gamma0 + 0.1*p2_range*np.random.randn(1)[0]*frac_random
+        gamma = gamma0 + 0.1*gamma_range*np.random.randn(1)[0]*frac_random
         theta[0]=lgalpha1
         theta[1]=gamma
     elif MODEL == LOGARITHMIC:
@@ -605,7 +606,7 @@ def log_prior( theta) :
         if(np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
             return -np.inf
         gamma=parameters[1]
-        if( np.abs(gamma - gamma0) > grange) :
+        if( np.abs(gamma - gamma0) > gamma_range) :
                 return -np.inf
     elif MODEL == LOGARITHMIC : 
         lgalpha1, lgq = parameters[0], parameters[1]
@@ -767,7 +768,7 @@ def read_pulsar_data() :
                     "alos_gr" : alos_gr_arr, "alos_gr_err" : alos_gr_err, \
                     "alos" : alos_arr, "alos error" : alos_err, "number pulsars" : len(name_arr)}
 
-def run_samples( sampler, pos, iterations, min_steps=20000, tau_multipler=100) : 
+def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) : 
     import time
     current_iteration = 0
     stop = False
