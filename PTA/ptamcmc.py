@@ -29,9 +29,9 @@ import matplotlib.pyplot as pl
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 20000
-thin = 400
-discard =2000
+iterations = 25000
+thin = 250
+discard =1800
 unique_name = True
 chainplot = True
 
@@ -45,13 +45,21 @@ ppta = [4,5,6,7,8,9]
 epta = [10,11,12,13]
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11]
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,14,15,16,17]
-best_pulsars = [0, 2, 3, 4, 5, 6, 9, 10, 11,12,14,15,16,17]
+#best_pulsars = [0, 2, 3, 4, 5, 6, 9, 10, 11,12,14,15,16,17]
+## removing Hulse-Taylor:
+best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
+## removing Hulse-Taylor + Fonseca source : 
+#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,16,17]
 
-use_other_distance = [5, 7, 9]
-use_other_distance = [5,7,9,14,17]
+#use_other_distance = [5, 7, 9]
+#use_other_distance = [5,7,9,14,17]
+## # removing Hulse-Taylor -
+use_other_distance = [5,7,9,17]
 #best_pulsars = nanograv
 pulsars_number = None
 pulsar_data = None
+
+doll = True
 
 # model
 QUILLEN = 0
@@ -69,15 +77,16 @@ BULGE = 11
 CROSS = 12
 LOGARITHMIC = 13
 
-number_parameters = 0 # number of parameters for the galactic model
+number_parameters = 2 # number of parameters for the galactic model
 
-DEFAULT_MODEL = QUILLEN
-MODEL = DEFAULT_MODEL
+DEFAULT_MODEL = QUILLENBETA
+MODEL = QUILLENBETA
 
 def initialize_model( model=MODEL) : 
     global number_parameters, MODEL
     if model == QUILLEN : 
         number_parameters = 1
+        chainplot == 0
     elif MODEL == QUILLENBETA:
         number_parameters = 2  ## this is alpha1 and beta only 
     elif model == EXPONENTIAL or model == GAUSSIAN or model == SECH2:
@@ -133,7 +142,7 @@ lg_q0 = -0.5
 lg_q_range = 0.49
 
 
-p1_range = 3
+p1_range = 1.5   ## set lower for cross term model, to 1.5 - 2
 p2_range = 2
 Mhrange = 0.86169 ## from Xue et al. 2008 and Boylan-Kolchin et al. 2013
 
@@ -159,7 +168,7 @@ mas_per_year_to_as_per_sec = 1e-3/3.15e7
 Vlsr_quillen = 233.e5 ## from Schonrich et al. 2010 in cm/s
 
 Vlsr = 255.2*1e5
-#Vlsr = Vlsr_quillen
+Vlsr = Vlsr_quillen
 Vlsr0 = Vlsr_quillen
 Vlsr_err = 1.4*1e5  ## reflecting Schonrich et al. 2010 
 G = 6.67e-8
@@ -773,6 +782,8 @@ def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) :
     current_iteration = 0
     stop = False
     autocorr = []
+    iter = []
+    ll = []
     old_tau = np.inf
     while not stop : 
         nstep = min(min_steps, iterations-current_iteration) 
@@ -783,6 +794,18 @@ def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) :
         current_iteration += nstep
         tau = sampler.get_autocorr_time(tol=0)
         autocorr.append(np.mean(tau))
+
+        if doll == True: 
+            if current_iteration >= discard: 
+                iter.append(current_iteration)
+                print ("current_iteration, discard",current_iteration, discard)
+
+                flat_samples = sampler.get_chain(discard=discard, thin=thin, flat=True)
+                flat_log_prob = sampler.get_log_prob(discard=discard, flat=True, thin=thin)
+                best_fit_theta, _ = get_best_fit( flat_samples, flat_log_prob)
+                lout = log_likelihood( best_fit_theta, return_chisq =False)
+                ll.append(lout)
+                print ("ll=",ll)
         
         # Check convergence
         criteria1 = np.all(tau * tau_multipler < sampler.iteration)
@@ -817,17 +840,25 @@ def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) :
     fig, axes = pl.subplots(number_parameters, figsize=(10, 7), sharex=True)
     samples = sampler.get_chain()    
 
-    if not (chainplot == 0):
-        for i in range(number_parameters):
-            ax = axes[i]
-            ax.plot(samples[:, :, i], "k", alpha=0.3)
-            ax.set_xlim(0, len(samples))
-            ax.set_ylabel(labels[i])
-            ax.yaxis.set_label_coords(-0.1, 0.5)
+    for i in range(number_parameters):
+        ax = axes[i]
+        ax.plot(samples[:, :, i], "k", alpha=0.3)
+        ax.set_xlim(0, len(samples))
+        ax.set_ylabel(labels[i])
+        ax.yaxis.set_label_coords(-0.1, 0.5)
 
-            axes[-1].set_xlabel("step number")
-            pl.savefig("chain.png")
+        axes[-1].set_xlabel("step number")
+        pl.savefig("chain.png")
     pl.clf()    
+
+    if doll == True:
+        iter = np.array(iter)
+        ll = np.array(ll)
+        pl.plot(iter,ll, "ro")
+        pl.xlabel("iteration")
+        pl.ylabel("log likelihood")
+        pl.savefig("ll.png")
+        pl.clf()
 
     return autocorr
 
@@ -889,6 +920,9 @@ def get_best_fit( flat_samples, flat_log_prob, show_chi_sq_arr = True) :
  
     chi_sq, chi_sq_arr = log_likelihood( best_fit_theta, return_chisq =True)
     print("best fit chisq = ", chi_sq)
+    lf = log_likelihood( best_fit_theta, return_chisq = False)
+    aic = -2.*lf + 2.*number_parameters
+    print ("AIC=",aic)
     if( show_chi_sq_arr) :
         print("Chi square array = ", chi_sq_arr)
     return best_fit_theta, chi_sq
@@ -965,12 +999,12 @@ def make_corner_plot(flat_samples, flat_log_prob) :
     #print(alos_obs)
     #print(alos_err)
 
-    # inds = np.random.randint(len(flat_samples), size=1000)
+    inds = np.random.randint(len(flat_samples), size=1000)
 
-    # for ind in inds:
-    #     theta = flat_samples[ind]
-    #     alos_model, alos_obs, alos_err = model_and_data(best_fit_theta)
-    #     pl.scatter(range(alos_model.size), alos_model, c='red', s=2, alpha=0.5)
+    for ind in inds:
+        Theta = flat_samples[ind]
+        alos_model, alos_obs, alos_err = model_and_data(best_fit_theta)
+        pl.scatter(range(alos_model.size), alos_model, c='red', s=2, alpha=0.5)
 
     pl.savefig("test.pdf")
 
@@ -989,7 +1023,7 @@ def run_compilation() :
     models = [QUILLEN, QUILLENBETA, CROSS, EXPONENTIAL, MWpot, LOCAL, Hernquistfix, HALODISK]
     rootdir = "../../../../Code/test-PTA"
     files = ["quillen.h5", "quillen_beta.h5", "cross.h5", "exp.h5", "mw2014.h5", "local.h5", "hernquist_fixed.h5", "halodisk.h5"]
-    labels = ["Quillen", r"Quillen + $\beta$", "cross", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Hernquist", "Hernquist+disk"]
+    labels = ["polynomial ($\alpha_{1}$", r"polynomial + $\beta$", "cross", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Hernquist", "Hernquist+disk"]
 
     #models = [QUILLEN, LOCAL]
     #files = ["quillen.h5", "local.h5"]
