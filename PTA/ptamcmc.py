@@ -796,7 +796,7 @@ def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) :
         autocorr.append(np.mean(tau))
 
         if doll == True: 
-            if current_iteration >= discard: 
+            if current_iteration > discard + 10*thin: 
                 iter.append(current_iteration)
                 print ("current_iteration, discard",current_iteration, discard)
 
