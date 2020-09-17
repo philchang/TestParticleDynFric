@@ -11,7 +11,7 @@ import emcee
 import os
 import matplotlib
 matplotlib.use("Agg")
-#matplotlib.rcParams.update({"text.usetex": True})
+matplotlib.rcParams.update({"text.usetex": True})
 
 import matplotlib.pyplot as pl
 import astropy.coordinates as coord
@@ -29,7 +29,7 @@ import matplotlib.pyplot as pl
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 30000
+iterations = 10000
 thin = 250
 discard =1800
 unique_name = True
@@ -51,10 +51,10 @@ best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
 ## removing Hulse-Taylor + Fonseca source : 
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,16,17]
 
-#use_other_distance = [5, 7, 9]
-#use_other_distance = [5,7,9,14,17]
+#use_other_parallaxes = [5, 7, 9]
+#use_other_parallaxes = [5,7,9,14,17]
 ## # removing Hulse-Taylor -
-use_other_distance = [5,7,9,17]
+use_other_parallaxes = [5,7,14,17]
 #best_pulsars = nanograv
 pulsars_number = None
 pulsar_data = None
@@ -111,7 +111,7 @@ def initialize_model( model=MODEL) :
         number_parameters = 2
 
     MODEL = model
-    print ("MODEL, number_parameters=",MODEL, number_parameters)
+    print ("MODEL=",MODEL)
 
 ## location of Sun -
 rsun= 8.122 ## in kpc
@@ -473,8 +473,8 @@ def string_to_value_and_error( string, has_exponent=False) :
 def initialize_theta( frac_random=1) :
     global pulsar_data 
     number_pulsars = pulsar_data["number pulsars"]
-    distances = pulsar_data["distance"]
-    distance_err = pulsar_data["distance error"]
+    parallaxes = pulsar_data["parallax"]
+    parallax_err = pulsar_data["parallax error"]
     alos_gr = pulsar_data["alos_gr"]
     alos_gr_err = pulsar_data["alos_gr_err"]
     mus = pulsar_data["mu"]
@@ -538,9 +538,9 @@ def initialize_theta( frac_random=1) :
 #    if(number_parameters > 2) :   ## CHECK THIS
 # I DON'T THINK THIS IS NEEDED
 #        theta[2] = Vlsr0 + Vlsr_err*np.random.randn(1)[0]*frac_random
-    theta[number_parameters:number_pulsars+number_parameters] = distances + distance_err*np.random.randn(number_pulsars)*frac_random
-    theta[number_pulsars+number_parameters:2*number_pulsars+number_parameters] = mus + mu_err*np.random.randn(number_pulsars)*frac_random
-    theta[2*number_pulsars+number_parameters:] = alos_gr + alos_gr_err*np.random.randn(number_pulsars)*frac_random
+    theta[number_parameters:number_pulsars+number_parameters] = parallaxes + 0.1*parallax_err*np.random.randn(number_pulsars)*frac_random
+    theta[number_pulsars+number_parameters:2*number_pulsars+number_parameters] = mus + 0.1*mu_err*np.random.randn(number_pulsars)*frac_random
+    theta[2*number_pulsars+number_parameters:] = alos_gr + 0.1*alos_gr_err*np.random.randn(number_pulsars)*frac_random
 
     return theta
 
@@ -549,17 +549,18 @@ def unpack_theta( theta, number_pulsars) :
     if( number_parameters > 0) :
         parameters = theta[0:number_parameters]
     
-    distances = theta[number_parameters:number_pulsars+number_parameters]
+    parallaxes = theta[number_parameters:number_pulsars+number_parameters]
     mus = theta[number_parameters+number_pulsars:number_parameters+2*number_pulsars]
     alos_gr = theta[number_parameters+2*number_pulsars:]
-    return parameters, distances, mus, alos_gr
+    return parameters, parallaxes, mus, alos_gr
 
 def model_and_data( theta) : 
     global pulsar_data
     number_pulsars = pulsar_data["number pulsars"]
     alos_model = None
     if( not theta is None) :
-        parameters, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
+        parameters, parallaxes, mus, alos_gr = unpack_theta(theta, number_pulsars)
+        distances = 1./(parallaxes) # in units of kpc
         b = pulsar_data["latitude"]
         l = pulsar_data["longitude"]
         alos_model = alos_from_pulsar( distances, b, l, mus, alos_gr, parameters)
@@ -580,11 +581,11 @@ def log_likelihood( theta, return_chisq = False) :
 def log_prior( theta) :
     global pulsar_data 
     number_pulsars = pulsar_data["number pulsars"]
-    parameters, distances, mus, alos_gr = unpack_theta(theta, number_pulsars)
+    parameters, parallaxes, mus, alos_gr = unpack_theta(theta, number_pulsars)
 
-    distance_err = pulsar_data["distance error"]
+    parallax_err = pulsar_data["parallax error"]
     mu_err = pulsar_data["mu error"]
-    distance_arr = pulsar_data["distance"]
+    parallax_arr = pulsar_data["parallax"]
     mu_arr = pulsar_data["mu"]
     alos_err = pulsar_data["alos error"]
     alos_gr_err = pulsar_data["alos_gr_err"]
@@ -671,7 +672,9 @@ def log_prior( theta) :
             return -np.inf
 
     #lp += -0.5*(((Vlsr - Vlsr0)/Vlsr_err)**2 + math.log(2*math.pi*Vlsr_err**2))
-    lp += 0.5*np.sum(-((distances-distance_arr)/distance_err)**2)# - np.log(2*np.pi*distance_err**2))
+    lp += 0.5*np.sum(-((parallaxes-parallax_arr)/parallax_err)**2)# - np.log(2*np.pi*distance_err**2))
+    if(np.any(parallaxes <= 0)) : # preclude zero or negative parallax
+        return -np.inf
     lp += 0.5*np.sum(- ((mus-mu_arr)/mu_err)**2)# - np.log(2*np.pi*mu_err**2))
     lp += 0.5*np.sum(- ((alos_gr-alos_gr_arr)/alos_gr_err)**2)# - np.log(2*np.pi*mu_err**2))
 
@@ -689,15 +692,13 @@ def read_pulsar_data() :
     import pandas as pd
 
     # import the GR corrections
-#    gr_dataframe = pd.read_excel("PBDOT_GR.xls")
-    gr_dataframe = pd.read_excel("PBDOT_GR_rev.xls")
+    gr_dataframe = pd.read_excel("PBDOT_GR.xls")
     gr_names = gr_dataframe["Pulsar Name"]
     gr_pbdot = gr_dataframe["PBDOT_GR (s/s)"]
 
     # import the data and decode
-#    dataframe = pd.read_excel("PBDOT.xls") 
-    dataframe = pd.read_excel("PBDOT_rev.xls")
-    distances = dataframe['Parallax Distance (kpc)'] 
+    dataframe = pd.read_excel("PBDOT.xls") 
+    parallaxes = dataframe['Parallax (mas)']
     names = dataframe["Pulsar Name"]
     datasets = dataframe["Dataset"]
     mus = dataframe["Proper Motion (mu, mas/yr)"]
@@ -705,12 +706,12 @@ def read_pulsar_data() :
     pbdot_obs = dataframe["PBDOT_obs (s/s)"]
     longitude = dataframe["Galactic Longitude (l, deg)"]
     latitude = dataframe["Galactic Latitude (b, deg)"]
-    other_distances = dataframe["Other Distance (kpc)"]
+    other_parallaxes = dataframe["Other Parallax (mas)"]
 
     name_arr = []
     dataset_arr = []
-    distance_arr = []
-    distance_err = []
+    parallax_arr = []
+    parallax_err = []
     latitude_arr = []
     longitude_arr = []
     mu_arr = []
@@ -721,8 +722,8 @@ def read_pulsar_data() :
     alos_arr = []
     alos_err = []
 
-    for name, dataset, distance_str, other_distance_str, mu_str, pb_str, pbdot_str, lat_str, long_str, pulsar_no in \
-            zip(names, datasets, distances, other_distances, mus, pbs, pbdot_obs, latitude, longitude, range(names.size)):
+    for name, dataset, parallax_str, other_parallax_str, mu_str, pb_str, pbdot_str, lat_str, long_str, pulsar_no in \
+            zip(names, datasets, parallaxes, other_parallaxes, mus, pbs, pbdot_obs, latitude, longitude, range(names.size)):
         if( (unique_name and name in name_arr) or (not excluded_pulsars is None and name in excluded_pulsars)) : 
             continue
         if( not pulsars_number is None and not pulsar_no in pulsars_number) :
@@ -731,10 +732,12 @@ def read_pulsar_data() :
             continue
         name_arr.append(name) 
         dataset_arr.append(dataset)
-        d, derr = string_to_value_and_error(distance_str)
 
-        if(pulsar_no in use_other_distance) : 
-            d, derr = string_to_value_and_error(distance_str)
+        para, para_err = None, None
+        if(pulsar_no in use_other_parallaxes) : 
+            para, para_err = string_to_value_and_error(other_parallax_str)
+        else :
+            para, para_err = string_to_value_and_error(parallax_str)
 
         pbdot_gr = TINY_GR
         pbdot_gr_err = TINY_GR
@@ -749,8 +752,8 @@ def read_pulsar_data() :
         pb, pberr = string_to_value_and_error( pb_str)
         pb *= day_to_sec
 
-        distance_arr.append(d)
-        distance_err.append( derr)
+        parallax_arr.append(para)
+        parallax_err.append(para_err)
         mu_arr.append( mu)
         mu_err.append( muerr)
         alos_arr.append(pbdot/pb*c)
@@ -763,8 +766,8 @@ def read_pulsar_data() :
 
     longitude_arr = np.array(longitude_arr)
     latitude_arr = np.array(latitude_arr)
-    distance_arr = np.array(distance_arr)
-    distance_err = np.array(distance_err)
+    parallax_arr = np.array(parallax_arr)
+    parallax_err = np.array(parallax_err)
     mu_arr = np.array(mu_arr)
     mu_err = np.array(mu_err)
     alos_arr = np.array(alos_arr)
@@ -773,7 +776,7 @@ def read_pulsar_data() :
     alos_gr_err = np.array(alos_gr_err)
 
     pulsar_data = {"name" : name_arr, "dataset": dataset_arr, "longitude": longitude_arr, "latitude" : latitude_arr, \
-                    "distance" : distance_arr, "distance error" : distance_err, "mu" : mu_arr, "mu error" : mu_err, \
+                    "parallax" : parallax_arr, "parallax error" : parallax_err, "mu" : mu_arr, "mu error" : mu_err, \
                     "alos_gr" : alos_gr_arr, "alos_gr_err" : alos_gr_err, \
                     "alos" : alos_arr, "alos error" : alos_err, "number pulsars" : len(name_arr)}
 
@@ -843,14 +846,19 @@ def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) :
     samples = sampler.get_chain()    
 
     for i in range(number_parameters):
-        ax = axes[i]
+        ax = axes
+        if( number_parameters > 1) :
+            ax = axes[i]
         ax.plot(samples[:, :, i], "k", alpha=0.3)
         ax.set_xlim(0, len(samples))
         print ("labels",labels[i])
         ax.set_ylabel(labels[i])
         ax.yaxis.set_label_coords(-0.1, 0.5)
+        if( number_parameters > 1) :
+            axes[-1].set_xlabel("step number")
+        else :
+            axes.set_xlabel("step number")
 
-        axes[-1].set_xlabel("step number")
         pl.savefig("chain.png")
     pl.clf()    
 
@@ -870,7 +878,7 @@ def run_mcmc() :
     import time
     itheta = initialize_theta( frac_random=0.)
 
-    nwalkers = 100
+    nwalkers = 150
     ndim = itheta.size
 
     pos = np.zeros( [nwalkers,ndim])
@@ -927,7 +935,8 @@ def get_best_fit( flat_samples, flat_log_prob, show_chi_sq_arr = True) :
     aic = -2.*lf + 2.*number_parameters
     print ("AIC=",aic)
     if( show_chi_sq_arr) :
-        print("Chi square array = ", chi_sq_arr)
+        for name, chi_sq in zip(pulsar_data["name"], chi_sq_arr) :
+            print("Chi square {0}: {1:.2e} ".format(name, chi_sq))
     return best_fit_theta, chi_sq
 
 
