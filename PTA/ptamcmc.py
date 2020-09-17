@@ -11,7 +11,7 @@ import emcee
 import os
 import matplotlib
 matplotlib.use("Agg")
-matplotlib.rcParams.update({"text.usetex": True})
+#matplotlib.rcParams.update({"text.usetex": True})
 
 import matplotlib.pyplot as pl
 import astropy.coordinates as coord
@@ -29,7 +29,7 @@ import matplotlib.pyplot as pl
 filename = "mcmc.h5" #default file, override with -o
 
 
-iterations = 25000
+iterations = 30000
 thin = 250
 discard =1800
 unique_name = True
@@ -79,20 +79,20 @@ LOGARITHMIC = 13
 
 number_parameters = 2 # number of parameters for the galactic model
 
-DEFAULT_MODEL = QUILLENBETA
-MODEL = QUILLENBETA
+DEFAULT_MODEL = CROSS
+MODEL = CROSS
 
 def initialize_model( model=MODEL) : 
     global number_parameters, MODEL
     if model == QUILLEN : 
         number_parameters = 1
-        chainplot == 0
-    elif MODEL == QUILLENBETA:
+     #   chainplot == 0
+    elif model == QUILLENBETA:
         number_parameters = 2  ## this is alpha1 and beta only 
     elif model == EXPONENTIAL or model == GAUSSIAN or model == SECH2:
         number_parameters = 2
     elif model == MWpot :
-        number_parameters = 2
+        number_parameters = 0
     elif model == Hernquistfix: 
         number_parameters = 0
     elif model == HERNQUIST:
@@ -103,15 +103,15 @@ def initialize_model( model=MODEL) :
         number_parameters = 3
     elif model == POWER_LAW : 
         number_parameters = 2
-    elif MODEL == BULGE:
+    elif model == BULGE:
         number_parameters = 2
-    elif MODEL == CROSS:
+    elif model == CROSS:
         number_parameters = 2
-    elif MODEL == LOGARITHMIC:
+    elif model == LOGARITHMIC:
         number_parameters = 2
 
     MODEL = model
-    print ("MODEL=",MODEL)
+    print ("MODEL, number_parameters=",MODEL, number_parameters)
 
 ## location of Sun -
 rsun= 8.122 ## in kpc
@@ -136,7 +136,7 @@ brange = 0.5 ## difference between Li et al. 2019, Mroz et al. 2019 and beta = -
 lgalpha1_0 = math.log10( alpha1_0)
 lgalpha2_0 = math.log10( -alpha2_0)
 gamma0 = 0.  ## vc(z) term 
-gamma_range = 0.5
+gamma_range = 1e-3
 
 lg_q0 = -0.5
 lg_q_range = 0.49
@@ -832,10 +832,12 @@ def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) :
         labels = ["alpha1","gamma"]
     elif MODEL == LOGARITHMIC:
         labels = ["lg_alpha1", "lg_q"]
+    elif MODEL == LOCAL:
+        labels = ["da/dr","da/dphi","da/dz"]
     elif MODEL == EXPONENTIAL or GAUSSIAN:
         labels = ["rho0","z0"]
     elif MODEL == HALODISK: 
-        labels == ["Mh","a","rho0","z0"]
+        labels = ["Mh","a","rho0","z0"]
 
     fig, axes = pl.subplots(number_parameters, figsize=(10, 7), sharex=True)
     samples = sampler.get_chain()    
@@ -844,6 +846,7 @@ def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) :
         ax = axes[i]
         ax.plot(samples[:, :, i], "k", alpha=0.3)
         ax.set_xlim(0, len(samples))
+        print ("labels",labels[i])
         ax.set_ylabel(labels[i])
         ax.yaxis.set_label_coords(-0.1, 0.5)
 
@@ -980,6 +983,10 @@ def make_corner_plot(flat_samples, flat_log_prob) :
             labels = [r"$\alpha1$",r"$\gamma$"]
         elif MODEL == LOGARITHMIC:
             labels = [r"$\ln\alpha_1$",r"$\ln q$"]
+        elif MODEL == HALODISK:
+            labels = [r"lgMh",r"lga",r"lgrho0",r"lgz0"]
+        elif MODEL == LOCAL:
+            labels = [r"$da/dr$", r"$da/d\phi$",r"$da/dz$"]
         elif MODEL == EXPONENTIAL or MODEL == GAUSSIAN or MODEL == SECH2: 
             labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
             flat_samples[:,0] -= math.log10(2e33/pc**3)
@@ -1020,10 +1027,15 @@ def run_model() :
     make_corner_plot( flat_samples, flat_log_prob)
 
 def run_compilation() : 
-    models = [QUILLEN, QUILLENBETA, CROSS, EXPONENTIAL, MWpot, LOCAL, Hernquistfix, HALODISK]
-    rootdir = "../../../../Code/test-PTA"
-    files = ["quillen.h5", "quillen_beta.h5", "cross.h5", "exp.h5", "mw2014.h5", "local.h5", "hernquist_fixed.h5", "halodisk.h5"]
-    labels = ["polynomial ($\alpha_{1}$", r"polynomial + $\beta$", "cross", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Hernquist", "Hernquist+disk"]
+    #models = [QUILLEN, QUILLENBETA, CROSS, EXPONENTIAL, MWpot, LOCAL, Hernquistfix, HALODISK]
+    models = [QUILLEN,QUILLENBETA, CROSS, EXPONENTIAL, MWpot,HERNQUIST]
+#    rootdir = "../../../../Code/test-PTA"
+    rootdir = "/Users/sxcsps/Projects/PTA/Phil/TestParticleDynFric/PTA"
+#    files = ["quillen.h5", "quillen_beta.h5", "cross.h5", "exp.h5", "mw2014.h5", "local.h5", "hernquist_fixed.h5", "halodisk.h5"]
+    files = ["quillen.h5","quillen_beta.h5","cross.h5","exp.h5","mwpot.h5","hernquist.h5"]
+#    labels = ["polynomial ($\alpha_{1}$", r"polynomial + $\beta$", "cross", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Hernquist", "Hernquist+disk"]
+    labels = [r"polynomial $\alpha_1$", r"polynomial + $\beta$", "cross", r"$\exp(-|z|/h_z)$", "MWP\
+2014", "Hernquist"]
 
     #models = [QUILLEN, LOCAL]
     #files = ["quillen.h5", "local.h5"]
@@ -1036,6 +1048,8 @@ def run_compilation() :
         initialize_model(model=model)
         fname = "{0}/{1}".format(rootdir, f)
         flat_samples, flat_log_prob = read_samples(fname)
+        print ("fname=",fname)
+        print ("num params",number_parameters)
         
         theta, chisq = get_best_fit( flat_samples, flat_log_prob)
         
