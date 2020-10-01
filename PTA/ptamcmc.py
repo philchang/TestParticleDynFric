@@ -25,15 +25,17 @@ from galpy.util import bovy_conversion
 from galpy.potential import DehnenBarPotential
 from galpy.potential import HernquistPotential
 import matplotlib.pyplot as pl
+from matplotlib import cm
 
 filename = "mcmc.h5" #default file, override with -o
+rootdir = "/Users/sxcsps/Projects/PTA/Phil/gitversion/TestParticleDynFric/PTA"
 
 
-iterations = 10000
-thin = 250
-discard =1800
+iterations = 20000
+thin = 200
+discard =1000
 unique_name = True
-chainplot = True
+chainplot = False 
 
 TINY_GR = 1e-20
 multithread = False
@@ -46,20 +48,32 @@ epta = [10,11,12,13]
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11]
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,14,15,16,17]
 #best_pulsars = [0, 2, 3, 4, 5, 6, 9, 10, 11,12,14,15,16,17]
-## removing Hulse-Taylor:
-best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
+## removing Hulse-Taylor and Kramer
+#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
+
+## removing large GR sources 1537 and 1738:
+best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,17]
+
+## switching 1012 Nanograv to 1012 EPTA:
+#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
+
+## remove Kramer, 1614 and 1738 - 
+#best_pulsars = [0, 12, 3, 4, 5, 6, 9, 10, 11,15,17]
+# using PPTA value for 1713:
+#best_pulsars = [7, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
 ## removing Hulse-Taylor + Fonseca source : 
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,16,17]
 
 #use_other_parallaxes = [5, 7, 9]
 #use_other_parallaxes = [5,7,9,14,17]
 ## # removing Hulse-Taylor -
+#use_other_parallaxes = [5,7,14,17,18]
 use_other_parallaxes = [5,7,14,17]
 #best_pulsars = nanograv
 pulsars_number = None
 pulsar_data = None
 
-doll = True
+doll = False
 
 # model
 QUILLEN = 0
@@ -76,11 +90,16 @@ QUILLENBETA = 10
 BULGE = 11
 CROSS = 12
 LOGARITHMIC = 13
+HERNQUISTEXP = 14
+CROSSNEW = 15
+CROSSPHIL = 16
+CROSSPLUS = 17
+HEIDI = 18
 
-number_parameters = 2 # number of parameters for the galactic model
+number_parameters = 1 # number of parameters for the galactic model
 
-DEFAULT_MODEL = CROSS
-MODEL = CROSS
+DEFAULT_MODEL = QUILLEN
+MODEL = QUILLEN
 
 def initialize_model( model=MODEL) : 
     global number_parameters, MODEL
@@ -109,6 +128,16 @@ def initialize_model( model=MODEL) :
         number_parameters = 2
     elif model == LOGARITHMIC:
         number_parameters = 2
+    elif model == HERNQUISTEXP:
+        number_parameters = 2
+    elif model == CROSSNEW:
+        number_parameters = 2
+    elif model == CROSSPHIL:
+        number_parameters = 2
+    elif model == CROSSPLUS:
+        number_parameters = 3
+    elif model == HEIDI:
+        number_parameters = 2
 
     MODEL = model
     print ("MODEL=",MODEL)
@@ -118,6 +147,7 @@ rsun= 8.122 ## in kpc
 xsun = rsun
 ysun = 0.
 zsun = 0.0055  ## in kpc from Quillen et al. 2020
+#zsun = 0.020 ## Bennett & Bovy 2019
 phisun = np.arctan2(xsun, ysun)
 
 kpctocm = 3.086e21 ## convert pc to cm
@@ -128,6 +158,8 @@ day_to_sec = 24*3600
 c = 3e10  ## in cm 
 
 #Quillen model constants
+zsolar0 = math.log10(zsun*kpctocm)
+zsunrange = 0.5 
 alpha1_0 = 4e-30
 alpha2_0 = -1e-51
 beta0 = 0.
@@ -136,10 +168,15 @@ brange = 0.5 ## difference between Li et al. 2019, Mroz et al. 2019 and beta = -
 lgalpha1_0 = math.log10( alpha1_0)
 lgalpha2_0 = math.log10( -alpha2_0)
 gamma0 = 0.  ## vc(z) term 
-gamma_range = 1e-3
+gamma_range = 1.
 
-lg_q0 = -0.5
-lg_q_range = 0.49
+#Sigma0 = 0.00001*Msun/(pc*pc)
+#lgSigma0 = math.log10(Sigma0)
+lgSigma0 = 10.*Msun/(pc*pc)
+Sigma_range = 1.
+
+lg_q0 = 1.
+lg_q_range = 2.
 
 
 p1_range = 1.5   ## set lower for cross term model, to 1.5 - 2
@@ -153,6 +190,13 @@ lgrho_midplane = math.log10(rho_midplane)
 scale_height = 0.1*kpctocm # 500 pc
 lgscale_height = math.log10(scale_height)
 
+## heidi model: 
+lgrhoh = lgrho_midplane
+rho_range = p1_range
+hd = 250.*pc
+lgzw_0 = math.log10(100.*pc)
+zw_range = 2
+
 ## Hernquist model 
 Mh_0 = 1.e12*Msun ## in g 
 a_0 = 30.*kpctocm  ## in cm
@@ -162,6 +206,7 @@ lga_0 = math.log10(a_0)
 xsun *= kpctocm
 ysun *= kpctocm
 zsun *= kpctocm
+rsun *= kpctocm
 
 mas_per_year_to_as_per_sec = 1e-3/3.15e7
 
@@ -221,8 +266,8 @@ def accMWpot(x,y,z,alpha=1.8, rc=1.9, a=3., b=0.28):
     mp= gp.MiyamotoNagaiPotential(a=a/8.,b=b/8.,normalize=.6)
     nfw= gp.NFWPotential(a=16/8.,normalize=.35)
     #print(help(MWPotential2014))
-    pot = [bp,mp,nfw]
-    #pot = MWPotential2014
+    #pot = [bp,mp,nfw]
+    pot = MWPotential2014
     az = evaluatezforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(Vlsr/1e5,8.122)
     ar = evaluateRforces(pot,r*u.kpc , z*u.kpc)*bovy_conversion.force_in_kmsMyr(Vlsr/1e5,8.122)
     ar = ar*1.e5/(1.e6*3.15e7)
@@ -283,11 +328,71 @@ def acc_quillen(x,y,z,lgalpha1, lgalpha2, Vlsr) :
 
     return ax,ay,az
 
+def acc_heidi(x,y,z,lgalpha1,lgrhoh,lgzw,Vlsr):
+    r = np.sqrt(x*x + y*y)
+    alpha1 = 1e1**lgalpha1
+    zw = 1e1**lgzw
+    rho = 1e1**lgrhoh
+
+    brack = ((np.abs(z-zw)/hd)*np.exp(-np.abs(z-zw)/hd)) + np.exp(-np.abs(z-zw)/hd)- (np.abs(-zw)/hd)*np.exp(zw/hd) - np.exp(zw/hd)
+    second = 4.*np.pi*G*rho*np.exp(-r/hd)*brack
+    az = -alpha1*z + second
+
+    ar = Vlsr*Vlsr/r
+    ax = -ar*x/r
+    ay = -ar*y/r
+
+    return ax,ay,az
+
 def acc_cross(x,y,z,lgalpha1,gamma,Vlsr):
     r = np.sqrt(x*x + y*y)
     alpha1 = 1e1**lgalpha1
-    az = -alpha1*z -(Vlsr**2*np.log(r/rsun)*2.*gamma*(1./kpctocm**2)*(z/np.sign(z)))
+#    az = -alpha1*z -(Vlsr**2*np.log(r/rsun)*2.*gamma*(1./kpctocm**2)*(z/np.sign(z)))
+    az = -alpha1*z -(Vlsr**2*np.log(r/rsun)*2.*gamma*(1./kpctocm**2)*z)
+    ar = (Vlsr**2/r)*(1.+gamma*((z/kpctocm)**2))
+    ax = -ar*x/r
+    ay = -ar*y/r
+    return ax,ay,az
+
+def acc_crossnew(x,y,z,lgalpha1,gamma,Vlsr):
+    r = np.sqrt(x*x + y*y)
+    alpha1 = 1e1**lgalpha1
+#    az = -alpha1*z  + ((Vlsr**2*np.log(r/rsun)*gamma*(kpctocm)*(1./z**2)))
+#    ar = (Vlsr**2/r)*(1.+gamma*kpctocm/z)
+#    az = -alpha1*z - (Vlsr*Vlsr*np.log(r/rsun)*3.*gamma*(1./kpctocm**3)*z**2)
+#    ar = (Vlsr*Vlsr/r)*(1.+gamma*((z/kpctocm)**3))
+#    ar = (Vlsr*Vlsr/r)*(1.+gamma*np.abs(z)*(1./kpctocm))
+
+## this case works -- 
+#    print ("rsun=",rsun)
+#    print ("r=",r)
+#    print ("x,y,z",x,y,z)
+
+    ar = (Vlsr*Vlsr)/r
+    az = -(Vlsr*Vlsr*np.log(r/rsun)*gamma*(np.abs(z)/z)*(1./kpctocm)) - alpha1*z
+    ax = -ar*x/r
+    ay = -ar*y/r
+    return ax,ay,az
+
+def acc_crossphil(x,y,z,lgalpha1,lgSigma,Vlsr):
+    r = np.sqrt(x*x + y*y)
+    alpha1 = 1e1**lgalpha1
+    Sigma = 1e1**lgSigma
+    ar = (Vlsr*Vlsr)/r
+    az = (-alpha1*z) - (4.*np.pi*G*Sigma*np.sign(z))
+    ax = -ar*x/r
+    ay = -ar*y/r
+#    print ("-alpha*z",-alpha1*z)
+#    print ("other term",-4.*np.pi*G*Sigma*np.sign(z))
+#    print ("az=",az)
+    return ax,ay,az
+
+def acc_crossplus(x,y,z,lgalpha1,gamma,lgSigma,Vlsr):
+    r = np.sqrt(x*x + y*y)
+    alpha1 = 1e1**lgalpha1
+    Sigma = 1e1**lgSigma
     ar = (Vlsr**2/r)*(1.+gamma*((np.abs(z/kpctocm))**2))
+    az = (-alpha1*z) - (4.*np.pi*G*Sigma*np.sign(z)) -(Vlsr**2*np.log(r/rsun)*2.*gamma*(1./kpctocm**2)*(z/np.sign(z)))
     ax = -ar*x/r
     ay = -ar*y/r
     return ax,ay,az
@@ -325,6 +430,7 @@ def acc_local_expansion( x, y, z, dadr=dadphi0, dadphi=dadphi0, dadz=1e1**lgdadz
     deltaphi = np.arctan2(x, y) - phisun 
     aphi = arsun*dadphi*deltaphi
     az = -dadz*z
+#    az = -dadz*(z/sign(z))
     ax = -ar*x/r - aphi*y/r
     ay = -ar*y/r + aphi*x/r
     return ax,ay,az
@@ -335,6 +441,16 @@ def accHernquist(x,y,z,lgMh,lga):
     a = 1e1**lga
     ar = (G*Mh)/((r+a)**2)
     az = -((G*Mh)*(z/r))/((r+a)**2)
+    ax = -ar*x/r
+    ay = -ar*y/r
+    return ax,ay,az
+
+def accHernquistexp(x,y,z,lgMh,lga):
+    r = np.sqrt(x**2 + y**2 + z**2)
+    Mh = 1e1**lgMh
+    a = 1e1**lga
+    ar = (G*Mh/a**2)*(1.-(2.*(r/a)))
+    az = (G*Mh/a**2)*(z/r - (2.*(z/a)))
     ax = -ar*x/r
     ay = -ar*y/r
     return ax,ay,az
@@ -372,17 +488,35 @@ def alos(x,y,z,parameters):
         if(number_parameters > 1) : 
             lgalpha2 = parameters[1]
         axsun, aysun, azsun = acc_quillen(xsun,ysun,zsun, lgalpha1, lgalpha2, Vlsr)
+        #azsun = np.minimum(azsun,-1.2579e-8)
         ax, ay, az = acc_quillen(x,y,z,lgalpha1,lgalpha2, Vlsr)
     elif MODEL == QUILLENBETA : 
         lgalpha1, beta = parameters[0],-np.inf
         if(number_parameters > 1):
             beta = parameters[1]
         axsun, aysun, azsun = acc_quillenbeta(xsun,ysun,zsun, lgalpha1, beta, Vlsr)
-        ax, ay, az = acc_quillenbeta(x,y,z,lgalpha1,beta, Vlsr)   
+        ax, ay, az = acc_quillenbeta(x,y,z,lgalpha1,beta, Vlsr)
+    elif MODEL == HEIDI:
+        lgalpha1, lgzw = parameters[0], parameters[1]
+        axsun, aysun, azsun = acc_heidi(xsun,ysun,zsun, lgalpha1, lgrhoh, lgzw, Vlsr)
+        ax, ay, az = acc_heidi(x,y,z,lgalpha1, lgrhoh, lgzw, Vlsr)
     elif MODEL == CROSS:
         lgalpha1,gamma = parameters[0], parameters[1]
         axsun, aysun, azsun = acc_cross(xsun,ysun,zsun, lgalpha1, gamma, Vlsr)
         ax, ay, az = acc_cross(x,y,z,lgalpha1,gamma, Vlsr)
+    elif MODEL == CROSSPLUS:
+        lgalpha1,gamma, lgSigma = parameters[0], parameters[1], parameters[2]
+        axsun,aysun,azsun = acc_crossplus(xsun,ysun,zsun,lgalpha1,gamma,lgSigma,Vlsr)
+        ax,ay,az = acc_crossplus(x,y,z,lgalpha1,gamma,lgSigma,Vlsr)
+    elif MODEL == CROSSPHIL:
+        lgalpha1,lgSigma = parameters[0], parameters[1]
+        axsun, aysun, azsun = acc_crossphil(xsun,ysun,zsun, lgalpha1, lgSigma, Vlsr)
+        ax, ay, az = acc_crossphil(x,y,z,lgalpha1,lgSigma, Vlsr)
+        #azsun = -1.2579e-8
+    elif MODEL == CROSSNEW:
+        lgalpha1,gamma = parameters[0], parameters[1]
+        axsun, aysun, azsun = acc_crossnew(xsun,ysun,zsun, lgalpha1, gamma, Vlsr)
+        ax, ay, az = acc_crossnew(x,y,z,lgalpha1,gamma, Vlsr)
     elif MODEL == LOGARITHMIC:
         lgalpha1, lgq = parameters[0], parameters[1]
         axsun, aysun, azsun = acc_logarithmic(xsun,ysun,zsun, lgalpha1, lgq, Vlsr)
@@ -417,6 +551,12 @@ def alos(x,y,z,parameters):
         a = 1e1**lga
         axsun,aysun,azsun = accHernquist(x,y,z,lgMh,lga)
         ax,ay,az = accHernquist(xsun,ysun,zsun,lgMh,lga)
+    elif MODEL == HERNQUISTEXP:
+        lgMh, lga = parameters[0:2]
+        Mh = 1e1**lgMh
+        a = 1e1**lga
+        axsun,aysun,azsun = accHernquistexp(x,y,z,lgMh,lga)
+        ax,ay,az = accHernquistexp(xsun,ysun,zsun,lgMh,lga)
     elif MODEL == HALODISK:
         lgMh,lga,lgrho0,lgz0 = parameters[0:4]
         Mh = 1e1**lgMh
@@ -497,6 +637,28 @@ def initialize_theta( frac_random=1) :
         gamma = gamma0 + 0.1*gamma_range*np.random.randn(1)[0]*frac_random
         theta[0]=lgalpha1
         theta[1]=gamma
+    elif MODEL == HEIDI:
+        lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
+        lgzw = lgzw_0 + 0.1*zw_range*np.random.randn(1)[0]*frac_random
+        theta[0]= lgalpha1
+        theta[1] = lgzw
+    elif MODEL == CROSSPLUS:
+        lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
+        gamma = gamma0 + 0.1*gamma_range*np.random.randn(1)[0]*frac_random
+        lgSigma = lgSigma0 + 0.1*Sigma_range*np.random.randn(1)[0]*frac_random
+        theta[0]= lgalpha1
+        theta[1]= gamma
+        theta[2]= lgSigma
+    elif MODEL == CROSSPHIL:
+        lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
+        lgSigma = lgSigma0 + 0.1*Sigma_range*np.random.randn(1)[0]*frac_random
+        theta[0]=lgalpha1
+        theta[1]=lgSigma
+    elif MODEL == CROSSNEW:
+        lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
+        gamma = gamma0 + 0.1*gamma_range*np.random.randn(1)[0]*frac_random
+        theta[0]=lgalpha1
+        theta[1]=gamma
     elif MODEL == LOGARITHMIC:
         lgalpha1 = lgalpha1_0 + 0.1*p1_range*np.random.randn(1)[0]*frac_random
         lgq = lg_q0 + 0.1*lg_q_range*np.random.randn(1)[0]*frac_random
@@ -509,6 +671,11 @@ def initialize_theta( frac_random=1) :
         theta[1] = lgz0
     elif MODEL == HERNQUIST :
         lgMh = lgMh_0 + 0.1*np.random.randn(1)[0]*frac_random 
+        lga = lga_0 + 0.01*np.random.randn(1)[0]*frac_random
+        theta[0] = lgMh
+        theta[1] = lga
+    elif MODEL == HERNQUISTEXP:
+        lgMh = lgMh_0 + 0.1*np.random.randn(1)[0]*frac_random
         lga = lga_0 + 0.01*np.random.randn(1)[0]*frac_random
         theta[0] = lgMh
         theta[1] = lga
@@ -617,7 +784,38 @@ def log_prior( theta) :
             return -np.inf
         gamma=parameters[1]
         if( np.abs(gamma - gamma0) > gamma_range) :
-                return -np.inf
+            return -np.inf
+    elif MODEL == HEIDI:
+        lgalpha1 = parameters[0]
+        if(np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
+            return -np.inf
+        lgzw = parameters[1]
+        if(np.abs(lgzw - lgzw_0) > zw_range):
+            return -np.inf
+    elif MODEL == CROSSPLUS:
+        lgalpha1 = parameters[0]
+        if(np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
+            return -np.inf
+        gamma=parameters[1]
+        if( np.abs(gamma - gamma0) > gamma_range) :
+            return -np.inf
+        lgSigma = parameters[2]
+        if( np.abs(lgSigma - lgSigma0) > Sigma_range) :
+            return -np.inf
+    elif MODEL == CROSSPHIL:
+        lgalpha1 = parameters[0]
+        if(np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
+            return -np.inf
+        lgSigma = parameters[1]
+        if( np.abs(lgSigma - lgSigma0) > Sigma_range) :
+            return -np.inf
+    elif MODEL == CROSSNEW:
+        lgalpha1 = parameters[0]
+        if(np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
+             return -np.inf
+        gamma=parameters[1]
+        if( np.abs(gamma - gamma0) > gamma_range) :
+            return -np.inf
     elif MODEL == LOGARITHMIC : 
         lgalpha1, lgq = parameters[0], parameters[1]
         if(np.abs(lgalpha1 - lgalpha1_0) > p1_range)  :
@@ -635,6 +833,12 @@ def log_prior( theta) :
         if (np.abs(lgMh - lgMh_0) > Mhrange) :
             return -np.inf
         #lp+=-0.5*((lga-lga_0)/p2_range)**2
+        if (np.abs(lga - lga_0) > p2_range):
+            return -np.inf
+    elif MODEL == HERNQUISTEXP:
+        lgMh, lga = parameters[0:2]
+        if (np.abs(lgMh - lgMh_0) > Mhrange) :
+            return -np.inf
         if (np.abs(lga - lga_0) > p2_range):
             return -np.inf
     elif MODEL == HALODISK:
@@ -692,12 +896,12 @@ def read_pulsar_data() :
     import pandas as pd
 
     # import the GR corrections
-    gr_dataframe = pd.read_excel("PBDOT_GR.xls")
+    gr_dataframe = pd.read_excel("PBDOT_GR_new.xls")
     gr_names = gr_dataframe["Pulsar Name"]
     gr_pbdot = gr_dataframe["PBDOT_GR (s/s)"]
 
     # import the data and decode
-    dataframe = pd.read_excel("PBDOT.xls") 
+    dataframe = pd.read_excel("PBDOTnew.xls") 
     parallaxes = dataframe['Parallax (mas)']
     names = dataframe["Pulsar Name"]
     datasets = dataframe["Dataset"]
@@ -824,17 +1028,27 @@ def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) :
     
     if MODEL == HERNQUIST:
         labels = ["Mh","a"]
+    elif MODEL == HERNQUISTEXP:
+        labels = ["Mh","a"]
     elif MODEL == QUILLEN:
         labels = ["alpha1"]
         if number_parameters > 1:
             labels = ["alpha1","alpha2"]
+    elif MODEL == HEIDI:
+        labels = ["alpha1","lgzw"]
     elif MODEL == QUILLENBETA:
         if number_parameters > 1:
             labels = ["alpha1","beta"]
     elif MODEL == CROSS:
         labels = ["alpha1","gamma"]
+    elif MODEL == CROSSPLUS:
+        labels = ["lgalpha1","gamma","lgSigma"]
+    elif MODEL == CROSSNEW:
+        labels = ["alpha1","gamma"]
+    elif MODEL == CROSSPHIL:
+        labels = ["lgalpha1","lgSigma"]
     elif MODEL == LOGARITHMIC:
-        labels = ["lg_alpha1", "lg_q"]
+        labels = ["lgalpha1", "lgq"]
     elif MODEL == LOCAL:
         labels = ["da/dr","da/dphi","da/dz"]
     elif MODEL == EXPONENTIAL or GAUSSIAN:
@@ -924,7 +1138,7 @@ def read_samples(filename=filename):
 def get_best_fit( flat_samples, flat_log_prob, show_chi_sq_arr = True) : 
     itheta = initialize_theta( frac_random=0.)
     best_fit_theta = np.zeros(itheta.shape)
-    print(itheta.shape, flat_samples.shape)
+    print(itheta.shape, flat_samples.shape, best_fit_theta.size)
     for i in range(best_fit_theta.size) : 
        mcmc = np.percentile(flat_samples[:, i], [50])
        best_fit_theta[i] = mcmc[0]
@@ -939,7 +1153,48 @@ def get_best_fit( flat_samples, flat_log_prob, show_chi_sq_arr = True) :
             print("Chi square {0}: {1:.2e} ".format(name, chi_sq))
     return best_fit_theta, chi_sq
 
+def plot_model_residual(theta, include_labels=True, obs=True,model=True, model_label=None, logy=False) :
+    global pulsar_data
+    x = range(len(pulsar_data["name"]))
+    print ("x",x)
+    parallaxes = pulsar_data["parallax"]
+    d = 1./(parallaxes) # in units of kpc
+    b = pulsar_data["latitude"]
+    l = pulsar_data["longitude"]
 
+    x = d * np.cos(b*np.pi/180.) * np.cos(l*np.pi/180.) *kpctocm + xsun
+    y = d * np.cos(b*np.pi/180.) * np.sin(l*np.pi/180.) * kpctocm + ysun
+    z = d * np.sin(b*np.pi/180.) * kpctocm + zsun
+    r = np.sqrt(x**2+z**2)
+    print ("r,z",r/kpctocm,z/kpctocm)
+
+    alos_model, alos_obs, alos_err = model_and_data(theta)
+    if model:
+
+        print(alos_model)
+        alobs = np.array(alos_obs)
+        almod = np.array(alos_model)
+        alerr = np.array(alos_err)
+        print ("alobs,almod",alobs,almod)
+
+        myz = np.ravel(z); myr = np.ravel(r)
+        myz = myz/kpctocm
+        myr= myr/kpctocm
+        frac = np.ravel((alos_obs-alos_model)/alos_obs)
+
+        
+        print ("alobs,almod",alobs,almod)
+
+        pl.scatter(myz,myr,s=10,c=frac,cmap="RdBu_r")
+        pl.colorbar()
+        #cbar.set_label('(alos_obs-alos_model)/alos_obs')
+        pl.xlabel("z [kpc]")
+        pl.ylabel("r [kpc]")
+        pl.tight_layout()
+        pl.savefig("scatterAlpha1.png")
+        pl.clf()
+
+ 
 def plot_model(theta, include_labels=True, obs=True,model=True, model_label=None, logy=False) : 
     global pulsar_data
 
@@ -950,7 +1205,8 @@ def plot_model(theta, include_labels=True, obs=True,model=True, model_label=None
         if( logy) :
             pl.errorbar(x,np.abs(alos_obs), yerr=alos_err, fmt="o",alpha=0.25,c='black',label=r"$a_{\rm los, obs}$")
         else : 
-            pl.errorbar(x,alos_obs, yerr=alos_err, fmt="o",alpha=0.25,c='black',label=r"$a_{\rm los, obs}$")
+            #pl.errorbar(x,alos_obs, yerr=alos_err, fmt="o",alpha=0.25,c='black',label=r"$a_{\rm los, obs}$")
+            pl.errorbar(x,alos_obs,yerr=alos_err/alos_obs,fmt="o",alpha=0.25,c='black',label=r"$a_{\rm los, obs}$")
 
     if( model) : 
 
@@ -959,12 +1215,16 @@ def plot_model(theta, include_labels=True, obs=True,model=True, model_label=None
         if( logy):
             pl.scatter(x,np.abs(alos_model), s=8, alpha=1,label=model_label)
         else : 
-            pl.scatter(x,alos_model, s=8, alpha=1,label=model_label)
+            #pl.scatter(x,alos_model, s=8, alpha=1,label=model_label)
+            pl.scatter(x,(alos_obs-alos_model)/alos_obs,s=8, alpha=1,label=model_label)
 
     if( include_labels) : 
         names = np.array(pulsar_data["name"])
-        pl.ylabel(r"$|a_{\rm los}|\,[{\rm cm\,s}^{-2}]$")
+        #pl.ylabel(r"$|a_{\rm los}|\,[{\rm cm\,s}^{-2}]$")
+        pl.ylabel(r"$\left(a_{\rm los,obs}-a_{\rm los,model}\right)/a_{\rm los,obs}$")
+        #pl.xticks(range(len(names)), labels=npl.ylabel(r"$\left(a_{\rm los,obs}-a_{\rm los,model}\right)/a_{\rm los,obs}$")
         pl.xticks(range(len(names)), labels=names, rotation="vertical")
+      
         if(logy) : 
             pl.ylim(1e-11,1e-6)
             pl.yscale('log')
@@ -978,7 +1238,8 @@ def make_corner_plot(flat_samples, flat_log_prob) :
     best_fit_theta, _ = get_best_fit( flat_samples, flat_log_prob)    
 
     if number_parameters > 0 : 
-
+        print ("MODEL",MODEL)
+        print ("number_parameters",number_parameters)
         pl.clf()
         labels = []
         for i in range(number_parameters) : 
@@ -986,12 +1247,24 @@ def make_corner_plot(flat_samples, flat_log_prob) :
         #labels = [r"$\log(Mh)$",r"$\log(a)$", r"$\log(rho0)$", r"$\log(z0)$", r"$V_{\rm lsr}$"]
         if MODEL == QUILLEN:
             labels = [r"$\alpha1$",r"$\alpha2$"]
+        elif MODEL == HEIDI:
+            labels = ["alpha1","zw"]
         elif MODEL == QUILLENBETA:
-            labels = [r"$\alpha1$",r"$beta$"]
+            labels = [r"$\alpha1 [\rm log~Gyr^{-2}]$",r"$\beta$"]
+            flat_samples[:,0] += np.log10((3.15e7*1e9)**2)
+            #labels = [r"$\alpha1$",r"$\beta$"]
         elif MODEL == CROSS:
+            labels = [r"$\alpha1 [\rm log~Gyr^{-2}]$",r"$\gamma [\rm log~Gyr^{-2}]$"]
+            flat_samples[:,0] += np.log10((3.15e7*1e9)**2)
+            flat_samples[:,1] += -np.log10((3.15e7*1e9)**2*(1./kpctocm**2)*(Vlsr**2))
+        elif MODEL == CROSSPLUS:
+            labels = [r"$\alpha1$",r"$\gamma$",r"$\Sigma$"]
+        elif MODEL == CROSSPHIL:
+            labels = [r"$\alpha1$",r"$\Sigma$"]
+        elif MODEL == CROSSNEW:
             labels = [r"$\alpha1$",r"$\gamma$"]
         elif MODEL == LOGARITHMIC:
-            labels = [r"$\ln\alpha_1$",r"$\ln q$"]
+            labels = [r"$\ln\alpha1$",r"$\ln q$"]
         elif MODEL == HALODISK:
             labels = [r"lgMh",r"lga",r"lgrho0",r"lgz0"]
         elif MODEL == LOCAL:
@@ -1010,7 +1283,8 @@ def make_corner_plot(flat_samples, flat_log_prob) :
             print( "{0} = {1} {2} {3}".format(labels[i], mcmc[1], q[0], q[1]))
 
     pl.clf()
-    plot_model(best_fit_theta)
+    #plot_model(best_fit_theta)
+    plot_model_residual(best_fit_theta)
     #print(alos_model)
     #print(alos_obs)
     #print(alos_err)
@@ -1022,7 +1296,7 @@ def make_corner_plot(flat_samples, flat_log_prob) :
         alos_model, alos_obs, alos_err = model_and_data(best_fit_theta)
         pl.scatter(range(alos_model.size), alos_model, c='red', s=2, alpha=0.5)
 
-    pl.savefig("test.pdf")
+    pl.savefig("single.png")
 
 def run_model() :
     initialize_model( MODEL)
@@ -1035,23 +1309,53 @@ def run_model() :
 
     make_corner_plot( flat_samples, flat_log_prob)
 
+def run_residual():
+    models = [QUILLEN]
+    files = ["quillen.h5"]
+    labels = [r"polynomial $\alpha_1$"]
+    read_pulsar_data()
+    plot_model_residual(None, include_labels=False, obs=True, model=False)
+
+    for model, f, label in zip(models, files, labels) :
+        initialize_model(model=model)
+        fname = "{0}/{1}".format(rootdir, f)
+        flat_samples, flat_log_prob = read_samples(fname)
+        print ("fname=",fname)
+        print ("num params",number_parameters)
+
+        theta, chisq = get_best_fit( flat_samples, flat_log_prob)
+
+        for i in range(number_parameters):
+            mcmc = np.percentile(flat_samples[:, i], [16, 50, 84])
+            q = np.diff(mcmc)
+            txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
+            print( "{0} = {1} {2} {3}".format("p{0}".format(i), mcmc[1], q[0], q[1]))
+
+        plot_model_residual(theta, include_labels=False, obs=False, model=True, model_label=r"{0}" .format(label))
+
+    plot_model_residual(None, include_labels=True, obs=False, model=False)
+    pl.tight_layout()
+    pl.savefig("residual.pdf")
+
 def run_compilation() : 
     #models = [QUILLEN, QUILLENBETA, CROSS, EXPONENTIAL, MWpot, LOCAL, Hernquistfix, HALODISK]
-    models = [QUILLEN,QUILLENBETA, CROSS, EXPONENTIAL, MWpot,HERNQUIST]
+    #models = [QUILLEN,QUILLENBETA, CROSS, MWpot,HERNQUIST,LOCAL]
+    models = [QUILLEN]
 #    rootdir = "../../../../Code/test-PTA"
-    rootdir = "/Users/sxcsps/Projects/PTA/Phil/TestParticleDynFric/PTA"
+    rootdir = "/Users/sxcsps/Projects/PTA/Phil/gitversion/TestParticleDynFric/PTA"
 #    files = ["quillen.h5", "quillen_beta.h5", "cross.h5", "exp.h5", "mw2014.h5", "local.h5", "hernquist_fixed.h5", "halodisk.h5"]
-    files = ["quillen.h5","quillen_beta.h5","cross.h5","exp.h5","mwpot.h5","hernquist.h5"]
+#    files = ["quillen.h5","quillenbeta.h5","cross.h5","mwpot.h5","hernquist.h5","local.h5"]
+    files = ["quillen.h5"]
 #    labels = ["polynomial ($\alpha_{1}$", r"polynomial + $\beta$", "cross", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Hernquist", "Hernquist+disk"]
-    labels = [r"polynomial $\alpha_1$", r"polynomial + $\beta$", "cross", r"$\exp(-|z|/h_z)$", "MWP\
-2014", "Hernquist"]
-
+#    labels = [r"polynomial $\alpha_1$", r"polynomial + $\beta$", "cross", "MWP", "Hernquist","local"]
+    labels = [r"polynomial $\alpha_1$"]
     #models = [QUILLEN, LOCAL]
     #files = ["quillen.h5", "local.h5"]
     #labels = ["Quillen", "local"]
     read_pulsar_data()
 
     plot_model(None, include_labels=False, obs=True, model=False)
+    #plot_model_residual(None, include_labels=False, obs=True, model=False)
 
     for model, f, label in zip(models, files, labels) :
         initialize_model(model=model)
@@ -1068,9 +1372,12 @@ def run_compilation() :
             txt = "\mathrm{{{3}}} = {0:.3f}_{{-{1:.3f}}}^{{{2:.3f}}}"
             print( "{0} = {1} {2} {3}".format("p{0}".format(i), mcmc[1], q[0], q[1]))
  
-        plot_model(theta, include_labels=False, obs=False, model=True, model_label=r"{0}: $\chi^2 = {1:.1f}$".format(label, chisq))
+        #plot_model(theta, include_labels=False, obs=False, model=True, model_label=r"{0}: $\chi^2 = {1:.1f}$".format(label, chisq))
+        plot_model(theta, include_labels=False, obs=False, model=True, model_label=r"{0}" .format(label))
+        #plot_model_residual(theta, include_labels=False, obs=False, model=True, model_label=r"{0}" .format(label))
 
     plot_model(None, include_labels=True, obs=False, model=False)
+    #plot_model_residual(None, include_labels=True, obs=False, model=False)
     pl.tight_layout()
     pl.savefig("test.pdf")
 
@@ -1087,6 +1394,7 @@ parser.add_argument('--multi', action="store_true",
 parser.add_argument('--num_procs', type=int, default=0, help="set number of processes to use for multiprocessing")
 parser.add_argument('--model', type=int, default=DEFAULT_MODEL, help="set model to be run")
 parser.add_argument('--compilation', action="store_true", default=False, help="run the compilation")
+parser.add_argument('--residual', action="store_true", default=False, help="do the residual")
 args = parser.parse_args()
 
 if not args.o is None :
@@ -1099,7 +1407,11 @@ if( args.num_procs > 0) :
     multithread = True
     processes = args.num_procs
 
-if( args.compilation) : 
+if( args.residual):
+    run_residual()
+elif( args.compilation) : 
     run_compilation()
 else :
     run_model()
+
+    
