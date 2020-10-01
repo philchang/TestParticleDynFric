@@ -31,7 +31,7 @@ filename = "mcmc.h5" #default file, override with -o
 rootdir = "/Users/sxcsps/Projects/PTA/Phil/gitversion/TestParticleDynFric/PTA"
 
 
-iterations = 20000
+iterations = 10000
 thin = 200
 discard =1000
 unique_name = True
@@ -52,7 +52,7 @@ epta = [10,11,12,13]
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
 
 ## removing large GR sources 1537 and 1738:
-best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,17]
+best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,17,18]
 
 ## switching 1012 Nanograv to 1012 EPTA:
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
@@ -67,8 +67,8 @@ best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,17]
 #use_other_parallaxes = [5, 7, 9]
 #use_other_parallaxes = [5,7,9,14,17]
 ## # removing Hulse-Taylor -
-#use_other_parallaxes = [5,7,14,17,18]
-use_other_parallaxes = [5,7,14,17]
+use_other_parallaxes = [5,7,14,17,18]
+#use_other_parallaxes = [5,7,14,17]
 #best_pulsars = nanograv
 pulsars_number = None
 pulsar_data = None
@@ -1200,6 +1200,7 @@ def plot_model(theta, include_labels=True, obs=True,model=True, model_label=None
 
     x = range(len(pulsar_data["name"]))
     alos_model, alos_obs, alos_err = model_and_data(theta)
+    print( alos_model, alos_obs, alos_err)
 
     if( obs) : 
         if( logy) :
@@ -1341,8 +1342,6 @@ def run_compilation() :
     #models = [QUILLEN, QUILLENBETA, CROSS, EXPONENTIAL, MWpot, LOCAL, Hernquistfix, HALODISK]
     #models = [QUILLEN,QUILLENBETA, CROSS, MWpot,HERNQUIST,LOCAL]
     models = [QUILLEN]
-#    rootdir = "../../../../Code/test-PTA"
-    rootdir = "/Users/sxcsps/Projects/PTA/Phil/gitversion/TestParticleDynFric/PTA"
 #    files = ["quillen.h5", "quillen_beta.h5", "cross.h5", "exp.h5", "mw2014.h5", "local.h5", "hernquist_fixed.h5", "halodisk.h5"]
 #    files = ["quillen.h5","quillenbeta.h5","cross.h5","mwpot.h5","hernquist.h5","local.h5"]
     files = ["quillen.h5"]
