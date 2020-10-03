@@ -29,9 +29,10 @@ from matplotlib import cm
 
 filename = "mcmc.h5" #default file, override with -o
 rootdir = "/Users/sxcsps/Projects/PTA/Phil/gitversion/TestParticleDynFric/PTA"
+rootdir = "."
 
 
-iterations = 10000
+iterations = 20000
 thin = 200
 discard =1000
 unique_name = True
@@ -47,12 +48,12 @@ ppta = [4,5,6,7,8,9]
 epta = [10,11,12,13]
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11]
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,14,15,16,17]
-#best_pulsars = [0, 2, 3, 4, 5, 6, 9, 10, 11,12,14,15,16,17]
+#best_pulsars = [0, 2, 3, 4, 5, 6, 9, 10, 11,12,14,15,16,17,18]
 ## removing Hulse-Taylor and Kramer
-#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
+best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17,18]
 
 ## removing large GR sources 1537 and 1738:
-best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,17,18]
+#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,17]
 
 ## switching 1012 Nanograv to 1012 EPTA:
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
@@ -179,7 +180,7 @@ lg_q0 = 1.
 lg_q_range = 2.
 
 
-p1_range = 1.5   ## set lower for cross term model, to 1.5 - 2
+p1_range = 2   ## set lower for cross term model, to 1.5 - 2
 p2_range = 2
 Mhrange = 0.86169 ## from Xue et al. 2008 and Boylan-Kolchin et al. 2013
 
@@ -208,7 +209,7 @@ ysun *= kpctocm
 zsun *= kpctocm
 rsun *= kpctocm
 
-mas_per_year_to_as_per_sec = 1e-3/3.15e7
+mas_per_year_to_rad_per_sec = 1e-3/3.15e7/206265
 
 Vlsr_quillen = 233.e5 ## from Schonrich et al. 2010 in cm/s
 
@@ -589,8 +590,8 @@ def alos_from_pulsar(d, b, l, mus, alos_gr, parameters) :
 
     al = alos(x,y,z,parameters)
 
-    # include sloskey effect mu^2 *d /c
-    al_sl = mus*mus*d*kpctocm/c
+    # include sloskey effect mu^2 *d /c = pbdot/pb but the acceleration is pbdot/pb *c
+    al_sl = mus*mus*d*kpctocm 
 
     return al+al_sl + alos_gr
 
@@ -707,7 +708,7 @@ def initialize_theta( frac_random=1) :
 #        theta[2] = Vlsr0 + Vlsr_err*np.random.randn(1)[0]*frac_random
     theta[number_parameters:number_pulsars+number_parameters] = parallaxes + 0.1*parallax_err*np.random.randn(number_pulsars)*frac_random
     theta[number_pulsars+number_parameters:2*number_pulsars+number_parameters] = mus + 0.1*mu_err*np.random.randn(number_pulsars)*frac_random
-    theta[2*number_pulsars+number_parameters:] = alos_gr + 0.1*alos_gr_err*np.random.randn(number_pulsars)*frac_random
+    theta[2*number_pulsars+number_parameters:] = alos_gr + alos_gr_err*np.random.randn(number_pulsars)*frac_random
 
     return theta
 
@@ -943,15 +944,15 @@ def read_pulsar_data() :
         else :
             para, para_err = string_to_value_and_error(parallax_str)
 
-        pbdot_gr = TINY_GR
+        pbdot_gr = -TINY_GR
         pbdot_gr_err = TINY_GR
         if(name in gr_names.values) : 
             pbdot_gr_str = gr_pbdot.values[gr_names.values == name][0]
             pbdot_gr, pbdot_gr_err = string_to_value_and_error( pbdot_gr_str, has_exponent=True)
 
         mu, muerr = string_to_value_and_error( mu_str)
-        mu *= mas_per_year_to_as_per_sec
-        muerr *= mas_per_year_to_as_per_sec
+        mu *= mas_per_year_to_rad_per_sec
+        muerr *= mas_per_year_to_rad_per_sec
         pbdot, pbdoterr = string_to_value_and_error( pbdot_str, has_exponent=True) 
         pb, pberr = string_to_value_and_error( pb_str)
         pb *= day_to_sec
@@ -962,11 +963,16 @@ def read_pulsar_data() :
         mu_err.append( muerr)
         alos_arr.append(pbdot/pb*c)
         alos_err.append(pbdoterr/pb*c)
+#        alos_arr.append((pbdot-pbdot_gr)/pb*c)
+#        alos_err.append(np.sqrt(pbdoterr**2+pbdot_gr_err**2)/pb*c)
         latitude_arr.append(float(lat_str))
         longitude_arr.append(float(long_str))
         alos_gr_arr.append(float(pbdot_gr/pb*c))
         alos_gr_err.append(float(pbdot_gr_err/pb*c))
+        #alos_gr_arr.append(float(-TINY_GR/pb*c))
+        #alos_gr_err.append(float(TINY_GR/pb*c))
         print(name, dataset)
+    
 
     longitude_arr = np.array(longitude_arr)
     latitude_arr = np.array(latitude_arr)
@@ -1156,7 +1162,7 @@ def get_best_fit( flat_samples, flat_log_prob, show_chi_sq_arr = True) :
 def plot_model_residual(theta, include_labels=True, obs=True,model=True, model_label=None, logy=False) :
     global pulsar_data
     x = range(len(pulsar_data["name"]))
-    print ("x",x)
+    #print ("x",x)
     parallaxes = pulsar_data["parallax"]
     d = 1./(parallaxes) # in units of kpc
     b = pulsar_data["latitude"]
@@ -1166,16 +1172,16 @@ def plot_model_residual(theta, include_labels=True, obs=True,model=True, model_l
     y = d * np.cos(b*np.pi/180.) * np.sin(l*np.pi/180.) * kpctocm + ysun
     z = d * np.sin(b*np.pi/180.) * kpctocm + zsun
     r = np.sqrt(x**2+z**2)
-    print ("r,z",r/kpctocm,z/kpctocm)
+    #print ("r,z",r/kpctocm,z/kpctocm)
 
     alos_model, alos_obs, alos_err = model_and_data(theta)
     if model:
 
-        print(alos_model)
+        #print(alos_model)
         alobs = np.array(alos_obs)
         almod = np.array(alos_model)
         alerr = np.array(alos_err)
-        print ("alobs,almod",alobs,almod)
+        #print ("alobs,almod",alobs,almod)
 
         myz = np.ravel(z); myr = np.ravel(r)
         myz = myz/kpctocm
@@ -1183,7 +1189,7 @@ def plot_model_residual(theta, include_labels=True, obs=True,model=True, model_l
         frac = np.ravel((alos_obs-alos_model)/alos_obs)
 
         
-        print ("alobs,almod",alobs,almod)
+        #print ("alobs,almod",alobs,almod)
 
         pl.scatter(myz,myr,s=10,c=frac,cmap="RdBu_r")
         pl.colorbar()
