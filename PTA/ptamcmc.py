@@ -28,15 +28,15 @@ import matplotlib.pyplot as pl
 from matplotlib import cm
 
 filename = "mcmc.h5" #default file, override with -o
-rootdir = "/Users/sxcsps/Projects/PTA/Phil/gitversion/TestParticleDynFric/PTA"
+#rootdir = "/Users/sxcsps/Projects/PTA/Phil/Oct2020/TestParticleDynFric/PTA"
 rootdir = "."
 
 
-iterations = 20000
+iterations = 40000
 thin = 200
 discard =1000
 unique_name = True
-chainplot = False 
+chainplot = True
 
 TINY_GR = 1e-20
 multithread = False
@@ -49,11 +49,20 @@ epta = [10,11,12,13]
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11]
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,14,15,16,17]
 #best_pulsars = [0, 2, 3, 4, 5, 6, 9, 10, 11,12,14,15,16,17,18]
-## removing Hulse-Taylor and Kramer
-best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17,18]
+## removing Hulse-Taylor 
+#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17,18]
 
-## removing large GR sources 1537 and 1738:
-#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,17]
+## order in terms of increasing phi: 
+best_pulsars = [16,0,11,15,17,2,12,3,6,4,9,10,5,18]
+
+## only VLBI measurements:
+#best_pulsars = [18,5,17]
+
+## lowest uncertainties on Pbdot,obs : 
+#best_pulsars = [3,4,15,18] 
+
+## checking w H-T:
+#best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,14,15,16,17,18]
 
 ## switching 1012 Nanograv to 1012 EPTA:
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17]
@@ -65,16 +74,18 @@ best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,15,16,17,18]
 ## removing Hulse-Taylor + Fonseca source : 
 #best_pulsars = [0, 12, 2, 3, 4, 5, 6, 9, 10, 11,16,17]
 
-#use_other_parallaxes = [5, 7, 9]
-#use_other_parallaxes = [5,7,9,14,17]
 ## # removing Hulse-Taylor -
-use_other_parallaxes = [5,7,14,17,18]
-#use_other_parallaxes = [5,7,14,17]
+use_other_parallaxes = [5,7,17,18]
+#use_other_parallaxes = [18,5,17]
+#use_other_parallaxes = [18]
+
+#with H-T:
+#use_other_parallaxes = [5,7,14,17,18]
 #best_pulsars = nanograv
 pulsars_number = None
 pulsar_data = None
 
-doll = False
+doll = True
 
 # model
 QUILLEN = 0
@@ -97,10 +108,10 @@ CROSSPHIL = 16
 CROSSPLUS = 17
 HEIDI = 18
 
-number_parameters = 1 # number of parameters for the galactic model
+number_parameters = 2 # number of parameters for the galactic model
 
-DEFAULT_MODEL = QUILLEN
-MODEL = QUILLEN
+DEFAULT_MODEL = QUILLENBETA
+MODEL = QUILLENBETA
 
 def initialize_model( model=MODEL) : 
     global number_parameters, MODEL
@@ -149,7 +160,7 @@ xsun = rsun
 ysun = 0.
 zsun = 0.0055  ## in kpc from Quillen et al. 2020
 #zsun = 0.020 ## Bennett & Bovy 2019
-phisun = np.arctan2(xsun, ysun)
+phisun = np.arctan2(ysun, xsun)
 
 kpctocm = 3.086e21 ## convert pc to cm
 pc = kpctocm*1e-3
@@ -173,7 +184,7 @@ gamma_range = 1.
 
 #Sigma0 = 0.00001*Msun/(pc*pc)
 #lgSigma0 = math.log10(Sigma0)
-lgSigma0 = 10.*Msun/(pc*pc)
+lgSigma0 = 1.*Msun/(pc*pc)
 Sigma_range = 1.
 
 lg_q0 = 1.
@@ -428,7 +439,7 @@ def acc_local_expansion( x, y, z, dadr=dadphi0, dadphi=dadphi0, dadz=1e1**lgdadz
     arsun = Vlsr*Vlsr/rsun
     #ar = Vlsr*Vlsr/r
     ar = arsun*(1+dadr*(r-rsun)/rsun)
-    deltaphi = np.arctan2(x, y) - phisun 
+    deltaphi = np.arctan2(y,x) - phisun 
     aphi = arsun*dadphi*deltaphi
     az = -dadz*z
 #    az = -dadz*(z/sign(z))
@@ -581,8 +592,8 @@ def alos(x,y,z,parameters):
     dr = np.sqrt(dx*dx+dy*dy+dz*dz)
 
     return ((ax-axsun)*dx + (ay-aysun)*dy + (az-azsun)*dz)/(np.maximum(dr,1.e-10))
-
-def alos_from_pulsar(d, b, l, mus, alos_gr, parameters) : 
+    
+def alos_from_pulsar(d, b, l, mus, alos_gr, parameters, returnAll=False) : 
     ## pulsar positions --
     x = d * np.cos(b*np.pi/180.) * np.cos(l*np.pi/180.) *kpctocm + xsun
     y = d * np.cos(b*np.pi/180.) * np.sin(l*np.pi/180.) * kpctocm + ysun
@@ -593,7 +604,10 @@ def alos_from_pulsar(d, b, l, mus, alos_gr, parameters) :
     # include sloskey effect mu^2 *d /c = pbdot/pb but the acceleration is pbdot/pb *c
     al_sl = mus*mus*d*kpctocm 
 
-    return al+al_sl + alos_gr
+    if(returnAll) : 
+        return al, al_sl, alos_gr
+    else : 
+        return al+al_sl + alos_gr
 
 def string_to_value_and_error( string, has_exponent=False) :
     import re
@@ -736,6 +750,28 @@ def model_and_data( theta) :
     alos_err = pulsar_data["alos error"]
 
     return alos_model, alos_obs, alos_err
+
+def gmodel_and_data(theta,useMCMC=True) :
+    global pulsar_data
+    number_pulsars = pulsar_data["number pulsars"]
+    alos_model,alos_gr,alos_sl = None, 0, 0
+    distances = None
+    parameters = None
+    if( not theta is None) :
+        parameters, parallaxes, mus, alos_gr = unpack_theta(theta, number_pulsars)
+        distances = 1./(parallaxes) # in units of kpc
+        b = pulsar_data["latitude"]
+        l = pulsar_data["longitude"]
+        alos_model, alos_sl, alos_gr = alos_from_pulsar( distances, b, l, mus, alos_gr, parameters, returnAll=True) ## model Galactic acceleration 
+    alos_obs = pulsar_data["algobs"]  ## observed Galactic acceleration 
+    alos_obs_err = pulsar_data["algobserr"]
+    parallax_err  = pulsar_data["parallax error"]
+    print ("Parallax_error",parallax_err)
+    
+    if( useMCMC) :
+        print ("using MCMC")
+        alos_obs = pulsar_data["alos"] - alos_sl - alos_gr
+    return distances, alos_model, alos_obs, alos_obs_err, parameters
 
 def log_likelihood( theta, return_chisq = False) :
     alos_model, alos_obs, alos_err = model_and_data( theta)
@@ -927,6 +963,8 @@ def read_pulsar_data() :
     alos_arr = []
     alos_err = []
 
+    pb_arr = []
+
     for name, dataset, parallax_str, other_parallax_str, mu_str, pb_str, pbdot_str, lat_str, long_str, pulsar_no in \
             zip(names, datasets, parallaxes, other_parallaxes, mus, pbs, pbdot_obs, latitude, longitude, range(names.size)):
         if( (unique_name and name in name_arr) or (not excluded_pulsars is None and name in excluded_pulsars)) : 
@@ -963,6 +1001,7 @@ def read_pulsar_data() :
         mu_err.append( muerr)
         alos_arr.append(pbdot/pb*c)
         alos_err.append(pbdoterr/pb*c)
+        pb_arr.append(pb)
 #        alos_arr.append((pbdot-pbdot_gr)/pb*c)
 #        alos_err.append(np.sqrt(pbdoterr**2+pbdot_gr_err**2)/pb*c)
         latitude_arr.append(float(lat_str))
@@ -985,10 +1024,24 @@ def read_pulsar_data() :
     alos_gr_arr = np.array(alos_gr_arr)
     alos_gr_err = np.array(alos_gr_err)
 
+    d = 1./parallax_arr ## in kpc
+    d_err = 1./parallax_err ## error in distance in kpc
+    
+    alsh = mu_arr*mu_arr*d*kpctocm
+    #alsherr = mu_err*mu_err*d_err*kpctocm  # I think this needs to be multiplied by kpctocm
+    ## error on parallax and PM needs to be propagated, alsherr has same units as alsh
+    alsherr = alsh * np.sqrt((4.*(mu_err/mu_arr)**2) + (d_err/d)**2)
+#    print ("alsherr/alsh",alsherr/alsh)
+    
+    algobs = alos_arr - alos_gr_arr - alsh  # this is the observed line-of-sight galactic acceleration
+
+    algobserr = np.sqrt(alos_err**2 + alsherr**2 + alos_gr_err**2)
+    print ("name_arr,alos_err,alsherr,alos_gr_err",name_arr,alos_err,alsherr,alos_gr_err)
+
     pulsar_data = {"name" : name_arr, "dataset": dataset_arr, "longitude": longitude_arr, "latitude" : latitude_arr, \
                     "parallax" : parallax_arr, "parallax error" : parallax_err, "mu" : mu_arr, "mu error" : mu_err, \
                     "alos_gr" : alos_gr_arr, "alos_gr_err" : alos_gr_err, \
-                    "alos" : alos_arr, "alos error" : alos_err, "number pulsars" : len(name_arr)}
+                    "alos" : alos_arr, "alos error" : alos_err, "algobs" : algobs, "algobserr" : algobserr, "Pb": pb_arr, "number pulsars" : len(name_arr)}
 
 def run_samples( sampler, pos, iterations, min_steps=2000, tau_multipler=100) : 
     import time
@@ -1161,82 +1214,189 @@ def get_best_fit( flat_samples, flat_log_prob, show_chi_sq_arr = True) :
 
 def plot_model_residual(theta, include_labels=True, obs=True,model=True, model_label=None, logy=False) :
     global pulsar_data
-    x = range(len(pulsar_data["name"]))
-    #print ("x",x)
+    # x = range(len(pulsar_data["name"]))
     parallaxes = pulsar_data["parallax"]
     d = 1./(parallaxes) # in units of kpc
     b = pulsar_data["latitude"]
     l = pulsar_data["longitude"]
+    Pb = pulsar_data["Pb"]
+    names = np.array(pulsar_data["name"])
 
+    # x = d * np.cos(b*np.pi/180.) * np.cos(l*np.pi/180.) *kpctocm + xsun
+    # y = d * np.cos(b*np.pi/180.) * np.sin(l*np.pi/180.) * kpctocm + ysun
+    # z = d * np.sin(b*np.pi/180.) * kpctocm + zsun
+    # r = np.sqrt(x**2+z**2)
+    # phi = np.arctan2(y, x)
+    # print ("r,z",r/kpctocm,z/kpctocm)
+    # print ("phi",phi)
+    # ## normalize the distance of each pulsar:
+    # nd = np.sqrt((x-xsun)**2 + (y-ysun)**2 + (z-zsun)**2)
+
+    alos_model, alos_obs, alos_err = model_and_data(theta)
+
+## the Galactic component only -- 
+    distances, alosGmodel, alosGobs, alosGobserr, parameters = gmodel_and_data(theta)
+    dmcmc, _, alosGobsmcmc, alosGobserrmcmc, parameters = gmodel_and_data(theta, useMCMC=True)
     x = d * np.cos(b*np.pi/180.) * np.cos(l*np.pi/180.) *kpctocm + xsun
     y = d * np.cos(b*np.pi/180.) * np.sin(l*np.pi/180.) * kpctocm + ysun
     z = d * np.sin(b*np.pi/180.) * kpctocm + zsun
     r = np.sqrt(x**2+z**2)
-    #print ("r,z",r/kpctocm,z/kpctocm)
+    phi = np.arctan2(y, x)
+    print ("R=",r/kpctocm)
+    print ("z=",z/kpctocm)
 
-    alos_model, alos_obs, alos_err = model_and_data(theta)
+    xmcmc = dmcmc * np.cos(b*np.pi/180.) * np.cos(l*np.pi/180.) *kpctocm + xsun
+    ymcmc = dmcmc * np.cos(b*np.pi/180.) * np.sin(l*np.pi/180.) * kpctocm + ysun
+    zmcmc = dmcmc * np.sin(b*np.pi/180.) * kpctocm + zsun
+
+    alosGobs = np.array(alosGobs) 
+    alosGobserr = np.array(alosGobserr)
+    alosGobsmcmc = np.array(alosGobsmcmc) 
+    alosGobserrmcmc = np.array(alosGobserrmcmc)
+
+    Pbdotgal = alosGobsmcmc*Pb/3e10
+    Pbdotgalerr = alosGobserrmcmc*Pb/3e10
+
+    print ("names",names)
+    print ("x,y,z",x/kpctocm,y/kpctocm,z/kpctocm)
+
+
+    print ("Pbdotgalerr/Pbdotgal",Pbdotgalerr/Pbdotgal)
+    print ("Pbdotgal,Pbdotgalerr",Pbdotgal,Pbdotgalerr)
+    print ("mean of Pbdotgal, Pbdotgalerr",np.mean(Pbdotgal),np.mean(Pbdotgalerr))
+    exit()
+    
+    ax, ay, az = acc_quillenbeta(x,y,z,parameters[0],parameters[1],Vlsr)
+
+    azobs = alosGobs/((z-zsun)/(d*kpctocm))
+    azobserr = alosGobserr/((z-zsun)/(d*kpctocm))
+    azobsmcmc = alosGobsmcmc/((zmcmc-zsun)/(dmcmc*kpctocm))
+    azobserrmcmc = alosGobserrmcmc/((zmcmc-zsun)/(dmcmc*kpctocm))
+
+    #pl.plot(z/kpctocm,azobs,'ro')
+    #pl.plot(zmcmc/kpctocm,azobsmcmc,'ro')
+
+    Gyrtos = 1.e9*3.15e7
+    y1 = -1.*(10**(3.69+0.19)/Gyrtos**2)*z
+    y2 = -1.*(10**(3.69-0.12)/Gyrtos**2)*z
+    y0 = -1.*(10**3.69/Gyrtos**2)*z
+    print ("z",z/kpctocm)
+    print ("y0=",y0)
+    print ("y1=",y1)
+    print ("y2=",y2)
+    sort = z.argsort()
+    #pl.plot(z/kpctocm, az, lw=2, label=r"$a_z = -\alpha_{1} \rm z$")
+    fig,ax = pl.subplots()
+    ax.plot(z/kpctocm, y0, lw = 2)
+    ax.fill_between(z[sort]/kpctocm,y0[sort], y1[sort],color = "crimson", alpha=0.3)
+    ax.fill_between(z[sort]/kpctocm,y0[sort], y2[sort],color = "crimson", alpha=0.3)
+
+    #pl.plot(z/kpctocm, -1.*(10**(3.69+0.19)/Gyrtos**2)*z, lw = 2)
+    #pl.plot(z/kpctocm, -1.*(10**(3.69-0.12)/Gyrtos**2)*z, lw = 2)        
+    ax.set_xlabel("z [kpc]",fontsize=14)
+    ax.set_ylabel(r"$\rm a_{z}~[cm/s^{2}]$",fontsize=14) 
+    ax.errorbar(z/kpctocm, azobs, yerr=azobserr, fmt="o",alpha=0.25,c='black',label=r"$a_{\rm z, Obs}$")
+#    pl.errorbar(zmcmc/kpctocm, azobsmcmc, yerr=azobserrmcmc, fmt="o",alpha=0.25,c='red',label=r"$a_{\rm z, Obs}$ MCMC")
+
+    ax.set_ylim(-10e-8,10e-8)
+    ax.legend(loc="best")
+    pl.savefig("azobsonly2.png")
+    pl.clf()
+
+    myz = np.ravel(z); myr = np.ravel(r)
+    myz = myz/kpctocm
+    myr= myr/kpctocm
+
     if model:
 
-        #print(alos_model)
         alobs = np.array(alos_obs)
         almod = np.array(alos_model)
         alerr = np.array(alos_err)
-        #print ("alobs,almod",alobs,almod)
 
-        myz = np.ravel(z); myr = np.ravel(r)
-        myz = myz/kpctocm
-        myr= myr/kpctocm
         frac = np.ravel((alos_obs-alos_model)/alos_obs)
+        fracG = np.ravel((alosGobs-alosGmodel)/alosGobs)
 
-        
-        #print ("alobs,almod",alobs,almod)
-
-        pl.scatter(myz,myr,s=10,c=frac,cmap="RdBu_r")
-        pl.colorbar()
-        #cbar.set_label('(alos_obs-alos_model)/alos_obs')
+        heatmap = pl.scatter(myz,myr,s=70,c=frac,cmap="RdBu_r")
+        cbar = pl.colorbar(heatmap)
+        cbar.set_label(r"$(a_{LOS}^{Obs}-a_{LOS}^{Mod})/a_{LOS}^{Obs}$")
         pl.xlabel("z [kpc]")
         pl.ylabel("r [kpc]")
         pl.tight_layout()
-        pl.savefig("scatterAlpha1.png")
+        pl.savefig("scattercheck.png")
         pl.clf()
 
- 
-def plot_model(theta, include_labels=True, obs=True,model=True, model_label=None, logy=False) : 
+        heatmap = pl.scatter(myz,myr,s=70,c=fracG,cmap="coolwarm")
+        cbar = pl.colorbar(heatmap)
+        cbar.set_label(r"$(a_{\rm G,LOS}^{Obs}-a_{\rm G,LOS}^{Mod})/a_{\rm G,LOS}^{Obs}$",fontsize=12)
+        pl.xlabel("z [kpc]",fontsize = 15)
+        pl.ylabel("R [kpc]", fontsize = 15)
+        pl.tight_layout()
+        pl.savefig("scatterquillenbetaG.png")
+        pl.clf()
+
+def compute_z(d,b,l):
+    z = d * np.sin(b*np.pi/180.) * kpctocm + zsun
+    return z
+
+def compute_phi(d, b, l) : 
+    ## pulsar positions --
+    x = d * np.cos(b*np.pi/180.) * np.cos(l*np.pi/180.) *kpctocm + xsun
+    y = d * np.cos(b*np.pi/180.) * np.sin(l*np.pi/180.) * kpctocm + ysun
+    z = d * np.sin(b*np.pi/180.) * kpctocm + zsun
+
+    return np.arctan2(y, x)
+
+def plot_model(theta, include_labels=True, obs=True,model=True, model_label=None, logy=False, usePhi=False, usez = False) : 
     global pulsar_data
 
     x = range(len(pulsar_data["name"]))
     alos_model, alos_obs, alos_err = model_and_data(theta)
     print( alos_model, alos_obs, alos_err)
-
+    if usez:
+        b = pulsar_data["latitude"]
+        l = pulsar_data["longitude"]
+        parallaxes = pulsar_data["parallax"]
+        distances = 1./(parallaxes) # in units of kpc
+        x = compute_z(distances, b, l)
+    if usePhi :
+        b = pulsar_data["latitude"]
+        l = pulsar_data["longitude"]
+        parallaxes = pulsar_data["parallax"]
+        #number_pulsars = pulsar_data["number pulsars"]
+        #parameters, parallaxes, mus, alos_gr = unpack_theta(theta, number_pulsars)
+        distances = 1./(parallaxes) # in units of kpc
+        x = compute_phi(distances, b, l) 
+        
     if( obs) : 
         if( logy) :
-            pl.errorbar(x,np.abs(alos_obs), yerr=alos_err, fmt="o",alpha=0.25,c='black',label=r"$a_{\rm los, obs}$")
+            pl.errorbar(x,np.abs(alos_obs), yerr=alos_err, fmt="o",alpha=0.25,c='black',label=r"$a_{\rm LOS, Obs}$")
         else : 
             #pl.errorbar(x,alos_obs, yerr=alos_err, fmt="o",alpha=0.25,c='black',label=r"$a_{\rm los, obs}$")
-            pl.errorbar(x,alos_obs,yerr=alos_err/alos_obs,fmt="o",alpha=0.25,c='black',label=r"$a_{\rm los, obs}$")
+            pl.errorbar(x,alos_obs,yerr=alos_err/alos_obs,fmt="o",alpha=0.25,c='black',label=r"$a_{\rm LOS, Obs}$")
 
     if( model) : 
 
         if( model_label is None) :
             model_label = r"$a_{\rm los, mod}$"
         if( logy):
-            pl.scatter(x,np.abs(alos_model), s=8, alpha=1,label=model_label)
+            pl.scatter(x,np.abs(alos_model), s=20, alpha=1,label=model_label)
         else : 
             #pl.scatter(x,alos_model, s=8, alpha=1,label=model_label)
-            pl.scatter(x,(alos_obs-alos_model)/alos_obs,s=8, alpha=1,label=model_label)
+            pl.scatter(x,(alos_obs-alos_model)/alos_obs,s=20, alpha=1,label=model_label)
 
     if( include_labels) : 
         names = np.array(pulsar_data["name"])
         #pl.ylabel(r"$|a_{\rm los}|\,[{\rm cm\,s}^{-2}]$")
-        pl.ylabel(r"$\left(a_{\rm los,obs}-a_{\rm los,model}\right)/a_{\rm los,obs}$")
+        pl.ylabel(r"$\left(a_{\rm LOS}^{Obs}-a_{\rm LOS}^{Mod}\right)/a_{\rm LOS}^{Obs}$",fontsize=15)
         #pl.xticks(range(len(names)), labels=npl.ylabel(r"$\left(a_{\rm los,obs}-a_{\rm los,model}\right)/a_{\rm los,obs}$")
-        pl.xticks(range(len(names)), labels=names, rotation="vertical")
+        if( not usePhi) :
+            pl.xticks(range(len(names)), labels=names, rotation="vertical",fontsize=12)
       
         if(logy) : 
             pl.ylim(1e-11,1e-6)
             pl.yscale('log')
         #pl.xscale('log')
-        pl.legend(loc="best")
+        pl.legend(loc="upper right")
 
 def make_corner_plot(flat_samples, flat_log_prob) :
     global pulsar_data
@@ -1280,7 +1440,9 @@ def make_corner_plot(flat_samples, flat_log_prob) :
             labels = [r"$\log(\rho_0/1\,M_{\odot}\,{\rm pc}^{-3})$",r"$\log(z_0/1\,{\rm pc})$", r"$V_{\rm lsr}$"]
             flat_samples[:,0] -= math.log10(2e33/pc**3)
             flat_samples[:,1] -= math.log10(pc)
-        fig = corner.corner( flat_samples[:,0:number_parameters], labels=labels[0:number_parameters],truths=best_fit_theta[0:number_parameters])
+        #fig = corner.corner( flat_samples[:,0:number_parameters], labels=labels[0:number_parameters],truths=best_fit_theta[0:number_parameters])
+            #fig = corner.corner(flat_samples[:,0:number_parameters],bins=50,color='C0',smooth=0.5,plot_datapoints=False,plot_density=True,plot_contours=True,fill_contour=False,show_titles=True,labels=labels[0:number_parameters],truths=best_fit_theta[0:number_parameters],title_fmt=".3f")
+        fig=corner.corner(flat_samples[:,0:number_parameters],bins=50,color='C0',smooth=0.5,plot_datapoints=False,plot_density=True,plot_contours=True,fill_contour=False,show_titles=True,labels=labels[0:number_parameters],title_fmt=".3f")
         pl.savefig("corner.png")
 
         for i in range(number_parameters):
@@ -1317,11 +1479,11 @@ def run_model() :
     make_corner_plot( flat_samples, flat_log_prob)
 
 def run_residual():
-    models = [QUILLEN]
-    files = ["quillen.h5"]
-    labels = [r"polynomial $\alpha_1$"]
+    models = [QUILLENBETA]
+    files = ["quillenbeta.h5"]
+    labels = [r"polynomial $\alpha_1, beta$"]
     read_pulsar_data()
-    plot_model_residual(None, include_labels=False, obs=True, model=False)
+    #plot_model_residual(None, include_labels=False, obs=True, model=False)
 
     for model, f, label in zip(models, files, labels) :
         initialize_model(model=model)
@@ -1340,26 +1502,29 @@ def run_residual():
 
         plot_model_residual(theta, include_labels=False, obs=False, model=True, model_label=r"{0}" .format(label))
 
-    plot_model_residual(None, include_labels=True, obs=False, model=False)
+    #plot_model_residual(None, include_labels=True, obs=False, model=False)
     pl.tight_layout()
     pl.savefig("residual.pdf")
 
 def run_compilation() : 
     #models = [QUILLEN, QUILLENBETA, CROSS, EXPONENTIAL, MWpot, LOCAL, Hernquistfix, HALODISK]
-    #models = [QUILLEN,QUILLENBETA, CROSS, MWpot,HERNQUIST,LOCAL]
-    models = [QUILLEN]
+    models = [QUILLEN,QUILLENBETA, CROSS, MWpot,HERNQUIST,LOCAL,EXPONENTIAL]
+    #models = [QUILLEN,QUILLENBETA]
+    #files = ["quillenordered.h5","quillenbetaordered.h5"]
+    #labels = [r"polynomial $\alpha_1$", r"polynomial + $\beta$"]
+    #models = [QUILLEN]
 #    files = ["quillen.h5", "quillen_beta.h5", "cross.h5", "exp.h5", "mw2014.h5", "local.h5", "hernquist_fixed.h5", "halodisk.h5"]
-#    files = ["quillen.h5","quillenbeta.h5","cross.h5","mwpot.h5","hernquist.h5","local.h5"]
-    files = ["quillen.h5"]
+    files = ["quillen.h5","quillenbeta.h5","cross.h5","mwp.h5","hernquist.h5","local.h5","exp.h5"]
+    #files = ["quillen.h5"]
 #    labels = ["polynomial ($\alpha_{1}$", r"polynomial + $\beta$", "cross", r"$\exp(-|z|/h_z)$", "MWP2014", "local", "Hernquist", "Hernquist+disk"]
-#    labels = [r"polynomial $\alpha_1$", r"polynomial + $\beta$", "cross", "MWP", "Hernquist","local"]
-    labels = [r"polynomial $\alpha_1$"]
+    labels = [r"polynomial $\alpha_1$", r"polynomial + $\beta$", "cross", "MWP", "Hernquist","local",r"$\exp(-|z|/h_z)$"]
+#    labels = [r"polynomial $\alpha_1$"]
     #models = [QUILLEN, LOCAL]
     #files = ["quillen.h5", "local.h5"]
     #labels = ["Quillen", "local"]
     read_pulsar_data()
-
-    plot_model(None, include_labels=False, obs=True, model=False)
+    usePhi = False
+    plot_model(None, include_labels=False, obs=True, model=False, usePhi=usePhi)
     #plot_model_residual(None, include_labels=False, obs=True, model=False)
 
     for model, f, label in zip(models, files, labels) :
@@ -1378,13 +1543,13 @@ def run_compilation() :
             print( "{0} = {1} {2} {3}".format("p{0}".format(i), mcmc[1], q[0], q[1]))
  
         #plot_model(theta, include_labels=False, obs=False, model=True, model_label=r"{0}: $\chi^2 = {1:.1f}$".format(label, chisq))
-        plot_model(theta, include_labels=False, obs=False, model=True, model_label=r"{0}" .format(label))
+        plot_model(theta, include_labels=False, obs=False, model=True, model_label=r"{0}".format(label),usePhi=usePhi)
         #plot_model_residual(theta, include_labels=False, obs=False, model=True, model_label=r"{0}" .format(label))
 
-    plot_model(None, include_labels=True, obs=False, model=False)
+    plot_model(None, include_labels=True, obs=False, model=False,usePhi=usePhi)
     #plot_model_residual(None, include_labels=True, obs=False, model=False)
     pl.tight_layout()
-    pl.savefig("test.pdf")
+    pl.savefig("testdec.png")
 
 
 import argparse
